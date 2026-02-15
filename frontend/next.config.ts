@@ -1,9 +1,11 @@
 import type { NextConfig } from "next";
+import path from "path";
 
 const nextConfig: NextConfig = {
   output: "standalone",
-  // Plotly.js is CommonJS; needs transpilation for Next.js
-  transpilePackages: ["react-plotly.js"],
+  turbopack: {
+    root: path.resolve(__dirname, ".."),
+  },
 };
 
 export default nextConfig;

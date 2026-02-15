@@ -53,6 +53,7 @@ def upgrade() -> None:
         sa.Column("name", sa.String(255), nullable=False),
         sa.Column("config", postgresql.JSONB, default={}),
         sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
+        sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
     )
 
     # Weather datasets
@@ -61,14 +62,12 @@ def upgrade() -> None:
         sa.Column("id", postgresql.UUID(as_uuid=True), primary_key=True),
         sa.Column("project_id", postgresql.UUID(as_uuid=True), sa.ForeignKey("projects.id", ondelete="CASCADE"), nullable=False),
         sa.Column("name", sa.String(255), nullable=False),
-        sa.Column("source", sa.String(100)),
-        sa.Column("latitude", sa.Float),
-        sa.Column("longitude", sa.Float),
-        sa.Column("ghi", sa.LargeBinary),
-        sa.Column("dni", sa.LargeBinary),
-        sa.Column("dhi", sa.LargeBinary),
-        sa.Column("temperature", sa.LargeBinary),
-        sa.Column("wind_speed", sa.LargeBinary),
+        sa.Column("source", sa.String(50), nullable=False),
+        sa.Column("ghi", sa.LargeBinary, nullable=False),
+        sa.Column("dni", sa.LargeBinary, nullable=False),
+        sa.Column("dhi", sa.LargeBinary, nullable=False),
+        sa.Column("temperature", sa.LargeBinary, nullable=False),
+        sa.Column("wind_speed", sa.LargeBinary, nullable=False),
         sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
     )
 

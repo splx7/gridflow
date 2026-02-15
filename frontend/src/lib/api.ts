@@ -50,7 +50,7 @@ function createClient(): AxiosInstance {
           } catch {
             localStorage.removeItem("access_token");
             localStorage.removeItem("refresh_token");
-            window.location.href = "/login";
+            window.location.href = "/";
           }
         }
       }
@@ -82,6 +82,11 @@ export async function login(
   password: string
 ): Promise<TokenResponse> {
   const { data } = await api.post("/auth/login", { email, password });
+  return data;
+}
+
+export async function loginAnonymous(): Promise<TokenResponse> {
+  const { data } = await api.post("/auth/anonymous");
   return data;
 }
 
@@ -188,6 +193,17 @@ export async function listLoadProfiles(
   projectId: string
 ): Promise<LoadProfile[]> {
   const { data } = await api.get(`/projects/${projectId}/load-profiles`);
+  return data;
+}
+
+export async function generateLoadProfile(
+  projectId: string,
+  body: { scenario: string; annual_kwh?: number }
+): Promise<LoadProfile> {
+  const { data } = await api.post(
+    `/projects/${projectId}/load-profiles/generate`,
+    body
+  );
   return data;
 }
 

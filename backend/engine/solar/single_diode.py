@@ -20,7 +20,6 @@ from dataclasses import dataclass
 
 import numpy as np
 from numpy.typing import NDArray
-from scipy.special import lambertw
 
 # ---------------------------------------------------------------------------
 # Physical / reference constants
@@ -165,6 +164,33 @@ def de_soto_params(
 # Single-diode equation solver (Lambert W approach)
 # ---------------------------------------------------------------------------
 
+def _iv_at_v(
+    v: NDArray[np.float64],
+    il: NDArray[np.float64],
+    io: NDArray[np.float64],
+    rs: NDArray[np.float64],
+    rsh: NDArray[np.float64],
+    a: NDArray[np.float64],
+) -> NDArray[np.float64]:
+    """Evaluate current I at voltage V using Newton iteration on the implicit
+    single-diode equation.  More numerically stable than the Lambert W
+    closed-form for typical module parameters."""
+    # Initial guess: I ≈ I_L - V/R_sh
+    i = np.copy(il) - v / rsh
+
+    for _ in range(30):
+        vd = v + i * rs  # diode voltage
+        exp_vd = np.exp(np.clip(vd / a, -500.0, 500.0))
+        f = il - io * (exp_vd - 1.0) - vd / rsh - i
+        df = -io * rs / a * exp_vd - rs / rsh - 1.0
+        di = -f / df
+        i = i + di
+        if np.all(np.abs(di) < 1e-10):
+            break
+
+    return np.maximum(i, 0.0)
+
+
 def single_diode_solve(
     I_L: NDArray[np.float64],
     I_o: NDArray[np.float64],
@@ -172,16 +198,11 @@ def single_diode_solve(
     R_sh: NDArray[np.float64],
     nNsVth: NDArray[np.float64],
 ) -> MPPResult:
-    """Solve the single-diode equation for the maximum power point using
-    the Lambert W function.
+    """Solve the single-diode equation for the maximum power point.
 
-    The single-diode I-V equation is:
-
-        I = I_L - I_o * [exp((V + I*R_s) / nNsVth) - 1] - (V + I*R_s) / R_sh
-
-    The Lambert W analytical solution for I(V) is used, and the MPP is
-    found by differentiating P = I * V and setting dP/dV = 0, again
-    solved via Lambert W.
+    Uses a numerically stable Newton iteration on the implicit I-V
+    equation rather than the Lambert W closed form (which overflows
+    for typical module-level parameter ranges).
 
     Parameters
     ----------
@@ -209,79 +230,43 @@ def single_diode_solve(
     if not np.any(valid):
         return MPPResult(I_mp=I_mp, V_mp=V_mp, P_mp=P_mp)
 
-    # Work on valid subset only
     il = I_L[valid]
     io = I_o[valid]
     rs = R_s[valid]
     rsh = R_sh[valid]
     a = nNsVth[valid]
 
-    # --- Open-circuit voltage (V_oc) via Lambert W ---
-    # At I=0: 0 = I_L - I_o * [exp(V_oc/a) - 1] - V_oc / R_sh
-    # Rearranging for Lambert W:
-    #   V_oc = a * W{I_o * R_sh/a * exp[(I_L + I_o)*R_sh/a]}
-    #          + (I_L - I_o)*R_sh - I_L*R_s
-    arg_oc = io * rsh / a * np.exp((il + io) * rsh / a)
-    arg_oc = np.minimum(arg_oc, 1e300)  # clamp to avoid overflow
-    w_oc = np.real(lambertw(arg_oc))
-    V_oc_v = a * w_oc + (il - io) * rsh - il * rs
-    V_oc_v = np.maximum(V_oc_v, 0.0)
-
-    # --- Maximum Power Point via Newton on P(V) ---
-    # We use the Lambert W closed-form for I(V) and iterate on dP/dV = 0.
-    # This is simple, robust, and fully vectorised.
-
-    # Newton's method to find V_mp
-    # Start from V = 0.8 * V_oc
-    v = np.copy(V_oc_v) * 0.8
-
-    for _ in range(50):
-        # I(V) via Lambert W closed form:
-        #   I = [I_L + I_o - V/R_sh] / [1 + R_s/R_sh]
-        #       - (a/R_s) * W{ I_o*R_s / [a*(1+R_s/R_sh)]
-        #                       * exp[(I_L*R_s + I_o*R_s + V) / (a*(1+R_s/R_sh))] }
-        denom = 1.0 + rs / rsh
-        z_arg_inner = (il * rs + io * rs + v) / (a * denom)
-        z_arg_inner = np.clip(z_arg_inner, -500.0, 500.0)
-        z = io * rs / (a * denom) * np.exp(z_arg_inner)
-        z = np.minimum(z, 1e300)
-        w_val = np.real(lambertw(z))
-
-        i_v = (il + io - v / rsh) / denom - a / rs * w_val
-
-        # Power P = V * I
-        p = v * i_v
-
-        # dI/dV: differentiate the Lambert W expression
-        # dI/dV = -1/(R_sh * denom) - w_val / (R_s * denom * (1 + w_val))
-        w_safe = np.where(np.abs(1.0 + w_val) < 1e-30, 1e-30, 1.0 + w_val)
-        di_dv = -1.0 / (rsh * denom) - w_val / (rs * denom * w_safe)
-
-        # dP/dV = I + V * dI/dV
-        dp_dv = i_v + v * di_dv
-
-        # d2P/dV2 for Newton step (approximate)
-        # d2P/dV2 ~ 2 * dI/dV + V * d2I/dV2 ... we use secant-like:
-        dv = -dp_dv / (2.0 * di_dv + 1e-30)
-
-        v_new = v + dv
-        # Keep voltage in [0, V_oc]
-        v_new = np.clip(v_new, 0.0, V_oc_v)
-
-        converged = np.abs(dv) < 1e-6
-        if np.all(converged):
-            v = v_new
+    # --- V_oc via Newton (numerically stable) ---
+    # At I=0: f(V) = I_L - I_o*(exp(V/a)-1) - V/R_sh = 0
+    v_oc = a * np.log(np.maximum(il / io, 1.0))  # initial guess
+    for _ in range(30):
+        exp_v = np.exp(np.clip(v_oc / a, -500.0, 500.0))
+        f = il - io * (exp_v - 1.0) - v_oc / rsh
+        df = -io / a * exp_v - 1.0 / rsh
+        dv = -f / df
+        v_oc = v_oc + dv
+        if np.all(np.abs(dv) < 1e-8):
             break
-        v = v_new
+    v_oc = np.maximum(v_oc, 0.0)
 
-    # Final I(V_mp)
-    denom = 1.0 + rs / rsh
-    z_arg_inner = (il * rs + io * rs + v) / (a * denom)
-    z_arg_inner = np.clip(z_arg_inner, -500.0, 500.0)
-    z = io * rs / (a * denom) * np.exp(z_arg_inner)
-    z = np.minimum(z, 1e300)
-    w_val = np.real(lambertw(z))
-    i_mp_v = (il + io - v / rsh) / denom - a / rs * w_val
+    # --- MPP via vectorised bisection on dP/dV = 0 ---
+    # P(V) is unimodal on [0, V_oc], so we can use ternary search
+    v_lo = np.zeros_like(v_oc)
+    v_hi = np.copy(v_oc)
+
+    for _ in range(60):
+        v1 = v_lo + (v_hi - v_lo) / 3.0
+        v2 = v_hi - (v_hi - v_lo) / 3.0
+        p1 = v1 * _iv_at_v(v1, il, io, rs, rsh, a)
+        p2 = v2 * _iv_at_v(v2, il, io, rs, rsh, a)
+        mask = p1 < p2
+        v_lo = np.where(mask, v1, v_lo)
+        v_hi = np.where(~mask, v2, v_hi)
+        if np.all((v_hi - v_lo) < 1e-6):
+            break
+
+    v = (v_lo + v_hi) / 2.0
+    i_mp_v = _iv_at_v(v, il, io, rs, rsh, a)
 
     v_mp_v = np.maximum(v, 0.0)
     i_mp_v = np.maximum(i_mp_v, 0.0)

@@ -527,9 +527,9 @@ class SimulationRunner:
 
         return BatterySystem(
             capacity_kwh=float(cfg["capacity_kwh"]),
-            max_charge_kw=float(cfg.get("max_charge_kw", cfg["capacity_kwh"])),
-            max_discharge_kw=float(cfg.get("max_discharge_kw", cfg["capacity_kwh"])),
-            efficiency=float(cfg.get("efficiency", 0.90)),
+            max_charge_kw=float(cfg.get("max_charge_rate_kw", cfg.get("max_charge_kw", cfg["capacity_kwh"]))),
+            max_discharge_kw=float(cfg.get("max_discharge_rate_kw", cfg.get("max_discharge_kw", cfg["capacity_kwh"]))),
+            efficiency=float(cfg.get("round_trip_efficiency", cfg.get("efficiency", 0.90))),
             min_soc=float(cfg.get("min_soc", 0.10)),
             max_soc=float(cfg.get("max_soc", 0.95)),
             initial_soc=float(cfg.get("initial_soc", 0.50)),

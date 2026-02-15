@@ -1,8 +1,98 @@
 "use client";
 
-import { useRef } from "react";
+import { useRef, useState, useCallback } from "react";
 import { useProjectStore } from "@/stores/project-store";
 import { uploadWeather, uploadLoadProfile } from "@/lib/api";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Separator } from "@/components/ui/separator";
+import {
+  CloudSun,
+  Upload,
+  FileSpreadsheet,
+  Loader2,
+  PlugZap,
+  Home,
+  Building2,
+  Factory,
+  Wheat,
+  Zap,
+} from "lucide-react";
+
+interface ScenarioPreset {
+  key: string;
+  label: string;
+  description: string;
+  annual_kwh: number;
+  icon: React.ReactNode;
+  color: string;
+}
+
+const SCENARIO_PRESETS: ScenarioPreset[] = [
+  {
+    key: "residential_small",
+    label: "Residential (Small)",
+    description: "Typical household, morning & evening peaks",
+    annual_kwh: 5_000,
+    icon: <Home className="h-4 w-4" />,
+    color: "text-sky-400",
+  },
+  {
+    key: "residential_large",
+    label: "Residential (Large)",
+    description: "Large household with HVAC / EV charging",
+    annual_kwh: 12_000,
+    icon: <Home className="h-4 w-4" />,
+    color: "text-blue-400",
+  },
+  {
+    key: "commercial_office",
+    label: "Commercial Office",
+    description: "9-to-5 weekday pattern, low weekends",
+    annual_kwh: 50_000,
+    icon: <Building2 className="h-4 w-4" />,
+    color: "text-violet-400",
+  },
+  {
+    key: "commercial_retail",
+    label: "Commercial Retail",
+    description: "Extended hours, moderate weekend load",
+    annual_kwh: 80_000,
+    icon: <Building2 className="h-4 w-4" />,
+    color: "text-purple-400",
+  },
+  {
+    key: "industrial_light",
+    label: "Industrial (Light)",
+    description: "Single-shift manufacturing, weekdays only",
+    annual_kwh: 200_000,
+    icon: <Factory className="h-4 w-4" />,
+    color: "text-orange-400",
+  },
+  {
+    key: "industrial_heavy",
+    label: "Industrial (Heavy)",
+    description: "Near-continuous 24/7 high base load",
+    annual_kwh: 500_000,
+    icon: <Factory className="h-4 w-4" />,
+    color: "text-red-400",
+  },
+  {
+    key: "agricultural",
+    label: "Agricultural",
+    description: "Seasonal irrigation & pumping loads",
+    annual_kwh: 30_000,
+    icon: <Wheat className="h-4 w-4" />,
+    color: "text-emerald-400",
+  },
+];
+
+function formatMWh(kwh: number): string {
+  if (kwh >= 1_000_000) return `${(kwh / 1_000_000).toFixed(1)} GWh/yr`;
+  if (kwh >= 1_000) return `${(kwh / 1_000).toFixed(0)} MWh/yr`;
+  return `${kwh.toLocaleString()} kWh/yr`;
+}
 
 interface DataPanelProps {
   projectId: string;
@@ -15,120 +105,275 @@ export default function DataPanel({ projectId }: DataPanelProps) {
     fetchPVGIS,
     fetchWeather,
     fetchLoadProfiles,
+    generateLoadProfile,
   } = useProjectStore();
 
   const weatherFileRef = useRef<HTMLInputElement>(null);
   const loadFileRef = useRef<HTMLInputElement>(null);
+  const [fetchingPVGIS, setFetchingPVGIS] = useState(false);
+  const [weatherDrag, setWeatherDrag] = useState(false);
+  const [loadDrag, setLoadDrag] = useState(false);
+  const [generatingScenario, setGeneratingScenario] = useState<string | null>(null);
 
   const handleFetchPVGIS = async () => {
-    await fetchPVGIS(projectId);
+    setFetchingPVGIS(true);
+    try {
+      await fetchPVGIS(projectId);
+    } finally {
+      setFetchingPVGIS(false);
+    }
   };
 
-  const handleUploadWeather = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+  const handleUploadWeather = async (file: File) => {
     await uploadWeather(projectId, file);
     await fetchWeather(projectId);
   };
 
-  const handleUploadLoad = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+  const handleUploadLoad = async (file: File) => {
     await uploadLoadProfile(projectId, file);
     await fetchLoadProfiles(projectId);
   };
 
+  const handleGenerateScenario = async (scenario: ScenarioPreset) => {
+    setGeneratingScenario(scenario.key);
+    try {
+      await generateLoadProfile(projectId, {
+        scenario: scenario.key,
+      });
+    } finally {
+      setGeneratingScenario(null);
+    }
+  };
+
+  const onWeatherFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) handleUploadWeather(file);
+  };
+
+  const onLoadFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) handleUploadLoad(file);
+  };
+
+  const handleDrop = useCallback(
+    (type: "weather" | "load") => (e: React.DragEvent) => {
+      e.preventDefault();
+      type === "weather" ? setWeatherDrag(false) : setLoadDrag(false);
+      const file = e.dataTransfer.files?.[0];
+      if (file) {
+        type === "weather" ? handleUploadWeather(file) : handleUploadLoad(file);
+      }
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [projectId]
+  );
+
   return (
     <div className="max-w-4xl mx-auto space-y-8">
       {/* Weather Data */}
-      <section>
-        <h3 className="text-lg font-semibold mb-4">Weather Data</h3>
-        <div className="flex gap-3 mb-4">
-          <button
-            onClick={handleFetchPVGIS}
-            className="bg-blue-600 hover:bg-blue-700 text-white rounded-lg px-4 py-2 text-sm font-medium transition-colors"
-          >
-            Fetch from PVGIS
-          </button>
-          <button
-            onClick={() => weatherFileRef.current?.click()}
-            className="bg-gray-800 hover:bg-gray-700 border border-gray-700 text-white rounded-lg px-4 py-2 text-sm font-medium transition-colors"
-          >
-            Upload TMY CSV
-          </button>
-          <input
-            ref={weatherFileRef}
-            type="file"
-            accept=".csv"
-            onChange={handleUploadWeather}
-            className="hidden"
-          />
-        </div>
-
-        {weatherDatasets.length === 0 ? (
-          <p className="text-gray-500 text-sm">No weather datasets yet</p>
-        ) : (
-          <div className="space-y-2">
-            {weatherDatasets.map((ds) => (
-              <div
-                key={ds.id}
-                className="bg-gray-900 border border-gray-800 rounded-lg p-3 flex items-center justify-between"
-              >
-                <div>
-                  <span className="text-sm font-medium">{ds.name}</span>
-                  <span className="text-xs text-gray-500 ml-2">({ds.source})</span>
-                </div>
-                <span className="text-xs text-gray-500">
-                  {new Date(ds.created_at).toLocaleDateString()}
-                </span>
-              </div>
-            ))}
+      <Card variant="glass">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <CloudSun className="h-5 w-5 text-amber-400" />
+            Weather Data
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex gap-3">
+            <Button onClick={handleFetchPVGIS} disabled={fetchingPVGIS}>
+              {fetchingPVGIS ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <CloudSun className="h-4 w-4" />
+              )}
+              Fetch from PVGIS
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => weatherFileRef.current?.click()}
+            >
+              <Upload className="h-4 w-4" />
+              Upload TMY CSV
+            </Button>
+            <input
+              ref={weatherFileRef}
+              type="file"
+              accept=".csv"
+              onChange={onWeatherFileChange}
+              className="hidden"
+            />
           </div>
-        )}
-      </section>
 
-      {/* Load Profiles */}
-      <section>
-        <h3 className="text-lg font-semibold mb-4">Load Profiles</h3>
-        <div className="flex gap-3 mb-4">
-          <button
-            onClick={() => loadFileRef.current?.click()}
-            className="bg-gray-800 hover:bg-gray-700 border border-gray-700 text-white rounded-lg px-4 py-2 text-sm font-medium transition-colors"
+          {/* Drop Zone */}
+          <div
+            onDragOver={(e) => {
+              e.preventDefault();
+              setWeatherDrag(true);
+            }}
+            onDragLeave={() => setWeatherDrag(false)}
+            onDrop={handleDrop("weather")}
+            className={`border-2 border-dashed rounded-xl p-6 text-center transition-colors ${
+              weatherDrag
+                ? "border-primary bg-primary/5"
+                : "border-border"
+            }`}
           >
-            Upload Load CSV (8760 hourly kW)
-          </button>
-          <input
-            ref={loadFileRef}
-            type="file"
-            accept=".csv"
-            onChange={handleUploadLoad}
-            className="hidden"
-          />
-        </div>
+            <FileSpreadsheet className="h-8 w-8 mx-auto text-muted-foreground mb-2" />
+            <p className="text-sm text-muted-foreground">
+              Drag & drop a weather CSV file here
+            </p>
+          </div>
 
-        {loadProfiles.length === 0 ? (
-          <p className="text-gray-500 text-sm">No load profiles yet</p>
-        ) : (
-          <div className="space-y-2">
-            {loadProfiles.map((lp) => (
-              <div
-                key={lp.id}
-                className="bg-gray-900 border border-gray-800 rounded-lg p-3 flex items-center justify-between"
-              >
-                <div>
-                  <span className="text-sm font-medium">{lp.name}</span>
-                  <span className="text-xs text-gray-500 ml-2">
-                    ({lp.profile_type})
+          <Separator />
+
+          {weatherDatasets.length === 0 ? (
+            <p className="text-muted-foreground text-sm">
+              No weather datasets yet
+            </p>
+          ) : (
+            <div className="space-y-2">
+              {weatherDatasets.map((ds) => (
+                <div
+                  key={ds.id}
+                  className="flex items-center justify-between p-3 rounded-lg bg-background/50"
+                >
+                  <div className="flex items-center gap-3">
+                    <CloudSun className="h-4 w-4 text-amber-400" />
+                    <span className="text-sm font-medium">{ds.name}</span>
+                    <Badge variant="secondary">{ds.source}</Badge>
+                  </div>
+                  <span className="text-xs text-muted-foreground">
+                    {new Date(ds.created_at).toLocaleDateString()}
                   </span>
                 </div>
-                <span className="text-sm text-gray-400">
-                  {(lp.annual_kwh / 1000).toFixed(0)} MWh/yr
-                </span>
-              </div>
-            ))}
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Load Profiles */}
+      <Card variant="glass">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <PlugZap className="h-5 w-5 text-violet-400" />
+            Load Profiles
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-5">
+          {/* Scenario Presets */}
+          <div>
+            <h4 className="text-sm font-medium text-muted-foreground mb-3 flex items-center gap-2">
+              <Zap className="h-3.5 w-3.5" />
+              Quick Start &mdash; Choose a Scenario
+            </h4>
+            <div className="grid grid-cols-2 gap-2">
+              {SCENARIO_PRESETS.map((scenario) => {
+                const isGenerating = generatingScenario === scenario.key;
+                return (
+                  <button
+                    key={scenario.key}
+                    disabled={generatingScenario !== null}
+                    onClick={() => handleGenerateScenario(scenario)}
+                    className="group relative text-left p-3 rounded-xl border border-border bg-background/50 hover:border-primary/50 hover:bg-primary/5 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className={scenario.color}>
+                        {isGenerating ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          scenario.icon
+                        )}
+                      </span>
+                      <span className="text-sm font-medium">{scenario.label}</span>
+                    </div>
+                    <p className="text-xs text-muted-foreground leading-relaxed">
+                      {scenario.description}
+                    </p>
+                    <div className="mt-1.5">
+                      <Badge variant="secondary" className="text-[10px]">
+                        {formatMWh(scenario.annual_kwh)}
+                      </Badge>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
           </div>
-        )}
-      </section>
+
+          <div className="relative">
+            <Separator />
+            <span className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 bg-card px-3 text-xs text-muted-foreground">
+              or upload your own
+            </span>
+          </div>
+
+          {/* Manual Upload */}
+          <div className="space-y-3">
+            <Button
+              variant="outline"
+              onClick={() => loadFileRef.current?.click()}
+            >
+              <Upload className="h-4 w-4" />
+              Upload Load CSV (8760 hourly kW)
+            </Button>
+            <input
+              ref={loadFileRef}
+              type="file"
+              accept=".csv"
+              onChange={onLoadFileChange}
+              className="hidden"
+            />
+
+            {/* Drop Zone */}
+            <div
+              onDragOver={(e) => {
+                e.preventDefault();
+                setLoadDrag(true);
+              }}
+              onDragLeave={() => setLoadDrag(false)}
+              onDrop={handleDrop("load")}
+              className={`border-2 border-dashed rounded-xl p-6 text-center transition-colors ${
+                loadDrag
+                  ? "border-primary bg-primary/5"
+                  : "border-border"
+              }`}
+            >
+              <FileSpreadsheet className="h-8 w-8 mx-auto text-muted-foreground mb-2" />
+              <p className="text-sm text-muted-foreground">
+                Drag & drop a load profile CSV here
+              </p>
+            </div>
+          </div>
+
+          <Separator />
+
+          {/* Existing profiles list */}
+          {loadProfiles.length === 0 ? (
+            <p className="text-muted-foreground text-sm">
+              No load profiles yet
+            </p>
+          ) : (
+            <div className="space-y-2">
+              {loadProfiles.map((lp) => (
+                <div
+                  key={lp.id}
+                  className="flex items-center justify-between p-3 rounded-lg bg-background/50"
+                >
+                  <div className="flex items-center gap-3">
+                    <PlugZap className="h-4 w-4 text-violet-400" />
+                    <span className="text-sm font-medium">{lp.name}</span>
+                    <Badge variant="secondary">{lp.profile_type}</Badge>
+                  </div>
+                  <span className="text-sm font-medium">
+                    {formatMWh(lp.annual_kwh)}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 }

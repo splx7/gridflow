@@ -5,6 +5,10 @@ import { useParams, useRouter } from "next/navigation";
 import { useAuthStore } from "@/stores/auth-store";
 import { useProjectStore } from "@/stores/project-store";
 import { compareSimulations } from "@/lib/api";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { ArrowLeft, GitCompare, Loader2, CheckCircle2 } from "lucide-react";
 
 interface ComparisonRow {
   simulation_id: string;
@@ -35,7 +39,7 @@ export default function ComparePage() {
 
   useEffect(() => {
     if (!isLoading && !isAuthenticated) {
-      router.replace("/login");
+      router.replace("/");
     }
   }, [isAuthenticated, isLoading, router]);
 
@@ -58,7 +62,7 @@ export default function ComparePage() {
     setLoading(true);
     try {
       const data = await compareSimulations(selected);
-      setComparison(data.comparisons);
+      setComparison(data.comparisons as unknown as ComparisonRow[]);
     } finally {
       setLoading(false);
     }
@@ -67,7 +71,7 @@ export default function ComparePage() {
   if (isLoading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
-        <div className="animate-spin h-8 w-8 border-2 border-blue-500 border-t-transparent rounded-full" />
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
       </div>
     );
   }
@@ -79,148 +83,180 @@ export default function ComparePage() {
       ? `${(v / 1e3).toFixed(decimals)}k`
       : v.toFixed(decimals);
 
+  const metrics = [
+    {
+      label: "Dispatch Strategy",
+      get: (r: ComparisonRow) => r.dispatch_strategy,
+    },
+    {
+      label: "NPC",
+      get: (r: ComparisonRow) => `$${fmt(r.npc)}`,
+    },
+    {
+      label: "LCOE ($/kWh)",
+      get: (r: ComparisonRow) => `$${r.lcoe.toFixed(3)}`,
+    },
+    {
+      label: "IRR",
+      get: (r: ComparisonRow) =>
+        r.irr != null ? `${(r.irr * 100).toFixed(1)}%` : "N/A",
+    },
+    {
+      label: "Payback",
+      get: (r: ComparisonRow) =>
+        r.payback_years != null
+          ? `${r.payback_years.toFixed(1)} yr`
+          : "N/A",
+    },
+    {
+      label: "RE Fraction",
+      get: (r: ComparisonRow) =>
+        `${(r.renewable_fraction * 100).toFixed(1)}%`,
+    },
+    {
+      label: "CO2 (t/yr)",
+      get: (r: ComparisonRow) =>
+        `${(r.co2_emissions_kg / 1000).toFixed(1)}`,
+    },
+  ];
+
   return (
     <div className="min-h-screen flex flex-col">
-      <header className="border-b border-gray-800 bg-gray-900/50 backdrop-blur shrink-0">
+      <header className="border-b border-border bg-background/50 backdrop-blur shrink-0">
         <div className="max-w-full mx-auto px-4 py-3 flex items-center gap-4">
-          <button
+          <Button
+            variant="ghost"
+            size="sm"
             onClick={() => router.push(`/projects/${projectId}`)}
-            className="text-gray-400 hover:text-white transition-colors text-sm"
           >
-            &larr; Project
-          </button>
-          <h1 className="text-lg font-semibold">Compare Simulations</h1>
+            <ArrowLeft className="h-4 w-4" />
+            Project
+          </Button>
+          <h1 className="text-lg font-semibold flex items-center gap-2">
+            <GitCompare className="h-5 w-5 text-primary" />
+            Compare Simulations
+          </h1>
         </div>
       </header>
 
       <div className="flex-1 overflow-y-auto p-6 max-w-6xl mx-auto w-full space-y-6">
         {/* Selection */}
-        <section>
-          <h3 className="text-sm font-semibold text-gray-400 uppercase mb-3">
-            Select simulations to compare
-          </h3>
-          {completedSims.length === 0 ? (
-            <p className="text-gray-500 text-sm">
-              No completed simulations available.
-            </p>
-          ) : (
-            <div className="space-y-2">
-              {completedSims.map((sim) => (
-                <label
-                  key={sim.id}
-                  className={`flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${
-                    selected.includes(sim.id)
-                      ? "border-blue-500 bg-blue-900/20"
-                      : "border-gray-800 bg-gray-900 hover:border-gray-700"
-                  }`}
-                >
-                  <input
-                    type="checkbox"
-                    checked={selected.includes(sim.id)}
-                    onChange={() => toggleSelect(sim.id)}
-                    className="rounded"
-                  />
-                  <span className="text-sm font-medium">{sim.name}</span>
-                  <span className="text-xs text-gray-500">
-                    {sim.dispatch_strategy}
-                  </span>
-                </label>
-              ))}
-            </div>
-          )}
+        <Card variant="glass">
+          <CardHeader>
+            <CardTitle className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
+              Select simulations to compare
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {completedSims.length === 0 ? (
+              <p className="text-muted-foreground text-sm">
+                No completed simulations available.
+              </p>
+            ) : (
+              <div className="space-y-2">
+                {completedSims.map((sim) => (
+                  <label
+                    key={sim.id}
+                    className={`flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition-all ${
+                      selected.includes(sim.id)
+                        ? "border-primary bg-primary/10"
+                        : "border-border bg-background/50 hover:border-muted-foreground/30"
+                    }`}
+                  >
+                    <div
+                      className={`h-5 w-5 rounded-md border-2 flex items-center justify-center transition-colors ${
+                        selected.includes(sim.id)
+                          ? "border-primary bg-primary"
+                          : "border-muted-foreground/30"
+                      }`}
+                    >
+                      {selected.includes(sim.id) && (
+                        <CheckCircle2 className="h-3.5 w-3.5 text-primary-foreground" />
+                      )}
+                    </div>
+                    <input
+                      type="checkbox"
+                      checked={selected.includes(sim.id)}
+                      onChange={() => toggleSelect(sim.id)}
+                      className="sr-only"
+                    />
+                    <span className="text-sm font-medium">{sim.name}</span>
+                    <Badge variant="secondary">
+                      {sim.dispatch_strategy}
+                    </Badge>
+                  </label>
+                ))}
+              </div>
+            )}
 
-          <button
-            onClick={handleCompare}
-            disabled={selected.length < 2 || loading}
-            className="mt-4 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded-lg px-6 py-2 text-sm font-medium transition-colors"
-          >
-            {loading ? "Comparing..." : `Compare (${selected.length} selected)`}
-          </button>
-        </section>
+            <Button
+              onClick={handleCompare}
+              disabled={selected.length < 2 || loading}
+              className="mt-2"
+            >
+              {loading ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <GitCompare className="h-4 w-4" />
+              )}
+              {loading
+                ? "Comparing..."
+                : `Compare (${selected.length} selected)`}
+            </Button>
+          </CardContent>
+        </Card>
 
         {/* Results Table */}
         {comparison && (
-          <section>
-            <h3 className="text-lg font-semibold mb-4">Comparison Results</h3>
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-gray-800">
-                    <th className="text-left py-3 px-4 text-gray-400 font-medium">
-                      Metric
-                    </th>
-                    {comparison.map((row) => (
-                      <th
-                        key={row.simulation_id}
-                        className="text-right py-3 px-4 font-medium"
-                      >
-                        {row.simulation_name}
+          <Card variant="glass">
+            <CardHeader>
+              <CardTitle>Comparison Results</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-border">
+                      <th className="text-left py-3 px-4 text-muted-foreground font-medium">
+                        Metric
                       </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {[
-                    {
-                      label: "Dispatch Strategy",
-                      get: (r: ComparisonRow) => r.dispatch_strategy,
-                    },
-                    {
-                      label: "NPC",
-                      get: (r: ComparisonRow) => `$${fmt(r.npc)}`,
-                    },
-                    {
-                      label: "LCOE ($/kWh)",
-                      get: (r: ComparisonRow) => `$${r.lcoe.toFixed(3)}`,
-                    },
-                    {
-                      label: "IRR",
-                      get: (r: ComparisonRow) =>
-                        r.irr != null ? `${(r.irr * 100).toFixed(1)}%` : "N/A",
-                    },
-                    {
-                      label: "Payback",
-                      get: (r: ComparisonRow) =>
-                        r.payback_years != null
-                          ? `${r.payback_years.toFixed(1)} yr`
-                          : "N/A",
-                    },
-                    {
-                      label: "RE Fraction",
-                      get: (r: ComparisonRow) =>
-                        `${(r.renewable_fraction * 100).toFixed(1)}%`,
-                    },
-                    {
-                      label: "CO2 (t/yr)",
-                      get: (r: ComparisonRow) =>
-                        `${(r.co2_emissions_kg / 1000).toFixed(1)}`,
-                    },
-                  ].map((metric) => {
-                    // Highlight best NPC/LCOE (lowest)
-                    const values = comparison.map((r) => metric.get(r));
-                    return (
-                      <tr
-                        key={metric.label}
-                        className="border-b border-gray-800/50"
-                      >
-                        <td className="py-3 px-4 text-gray-400">
-                          {metric.label}
-                        </td>
-                        {comparison.map((row, i) => (
-                          <td
-                            key={row.simulation_id}
-                            className="py-3 px-4 text-right font-mono"
-                          >
-                            {values[i]}
+                      {comparison.map((row) => (
+                        <th
+                          key={row.simulation_id}
+                          className="text-right py-3 px-4 font-medium"
+                        >
+                          {row.simulation_name}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {metrics.map((metric) => {
+                      const values = comparison.map((r) => metric.get(r));
+                      return (
+                        <tr
+                          key={metric.label}
+                          className="border-b border-border/50"
+                        >
+                          <td className="py-3 px-4 text-muted-foreground">
+                            {metric.label}
                           </td>
-                        ))}
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          </section>
+                          {comparison.map((row, i) => (
+                            <td
+                              key={row.simulation_id}
+                              className="py-3 px-4 text-right font-mono"
+                            >
+                              {values[i]}
+                            </td>
+                          ))}
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </CardContent>
+          </Card>
         )}
       </div>
     </div>

@@ -44,7 +44,7 @@ class BatteryConfig(BaseModel):
     min_soc: float = Field(default=0.20, ge=0, le=1)
     max_soc: float = Field(default=1.0, ge=0, le=1)
     initial_soc: float = Field(default=0.50, ge=0, le=1)
-    chemistry: str = "li-ion"
+    chemistry: str = "nmc"
     cycle_life: int = Field(default=5000, ge=100)
     capital_cost_per_kwh: float = Field(default=300, ge=0)
     replacement_cost_per_kwh: float = Field(default=200, ge=0)

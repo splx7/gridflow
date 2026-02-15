@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   ReactFlow,
   Background,
@@ -10,8 +10,10 @@ import {
   NodeTypes,
   Handle,
   Position,
-  useNodesState,
-  useEdgesState,
+  applyNodeChanges,
+  applyEdgeChanges,
+  type NodeChange,
+  type EdgeChange,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import type { Component, ComponentType } from "@/types";
@@ -38,20 +40,20 @@ function ComponentNode({ data }: { data: { label: string; type: ComponentType; c
 
   return (
     <div
-      className="bg-gray-900 border-2 rounded-xl p-4 min-w-[140px] text-center cursor-pointer hover:shadow-lg transition-shadow"
+      className="bg-card border-2 rounded-xl p-4 min-w-[140px] text-center cursor-pointer hover:shadow-lg transition-shadow"
       style={{ borderColor: color }}
     >
-      <Handle type="source" position={Position.Right} className="!bg-gray-600" />
-      <Handle type="target" position={Position.Left} className="!bg-gray-600" />
+      <Handle type="source" position={Position.Right} className="!bg-muted-foreground" />
+      <Handle type="target" position={Position.Left} className="!bg-muted-foreground" />
       <div
         className="w-10 h-10 rounded-full flex items-center justify-center mx-auto mb-2 text-white text-xs font-bold"
         style={{ backgroundColor: color }}
       >
         {icon}
       </div>
-      <div className="text-sm font-medium text-white">{data.label}</div>
-      <div className="text-xs text-gray-400 mt-1">
-        {data.type === "solar_pv" && `${data.config.capacity_kwp || 0} kWp`}
+      <div className="text-sm font-medium text-foreground">{data.label}</div>
+      <div className="text-xs text-muted-foreground mt-1">
+        {data.type === "solar_pv" && `${data.config.capacity_kw || data.config.capacity_kwp || 0} kWp`}
         {data.type === "wind_turbine" && `${data.config.rated_power_kw || 0} kW`}
         {data.type === "battery" && `${data.config.capacity_kwh || 0} kWh`}
         {data.type === "diesel_generator" && `${data.config.rated_power_kw || 0} kW`}
@@ -86,10 +88,10 @@ export default function SystemDiagram({ components, onSelect }: SystemDiagramPro
     position: { x: 350, y: 130 },
     data: { label: "AC Bus" },
     style: {
-      background: "#1f2937",
-      border: "2px solid #4b5563",
+      background: "hsl(222.2 84% 4.9%)",
+      border: "2px solid hsl(217.2 32.6% 17.5%)",
       borderRadius: "8px",
-      color: "#d1d5db",
+      color: "hsl(210 40% 98%)",
       fontWeight: "bold",
       padding: "12px 24px",
     },
@@ -122,8 +124,51 @@ export default function SystemDiagram({ components, onSelect }: SystemDiagramPro
     style: { stroke: COMPONENT_COLORS[comp.component_type as ComponentType] || "#6b7280" },
   }));
 
-  const [nodes, , onNodesChange] = useNodesState([busNode, ...componentNodes]);
-  const [edgeState, , onEdgesChange] = useEdgesState(edges);
+  const [nodes, setNodes] = useState<Node[]>([busNode, ...componentNodes]);
+  const [edgeState, setEdges] = useState<Edge[]>(edges);
+
+  useEffect(() => {
+    const updatedComponentNodes: Node[] = components.map((comp, idx) => {
+      const basePos = LAYOUT_POSITIONS[comp.component_type as ComponentType] || { x: 50, y: 50 + idx * 170 };
+      const sameTypeBefore = components.filter(
+        (c, i) => i < idx && c.component_type === comp.component_type
+      ).length;
+      // Preserve existing position if the node was already placed (drag support)
+      const existing = nodes.find((n) => n.id === comp.id);
+      return {
+        id: comp.id,
+        type: "component",
+        position: existing?.position ?? { x: basePos.x, y: basePos.y + sameTypeBefore * 170 },
+        data: {
+          label: comp.name,
+          type: comp.component_type as ComponentType,
+          config: comp.config,
+        },
+      };
+    });
+
+    const updatedEdges: Edge[] = components.map((comp) => ({
+      id: `e-${comp.id}-bus`,
+      source: comp.id,
+      target: "bus",
+      animated: true,
+      style: { stroke: COMPONENT_COLORS[comp.component_type as ComponentType] || "#6b7280" },
+    }));
+
+    setNodes([busNode, ...updatedComponentNodes]);
+    setEdges(updatedEdges);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [components]);
+
+  const onNodesChange = useCallback(
+    (changes: NodeChange[]) => setNodes((nds) => applyNodeChanges(changes, nds)),
+    []
+  );
+
+  const onEdgesChange = useCallback(
+    (changes: EdgeChange[]) => setEdges((eds) => applyEdgeChanges(changes, eds)),
+    []
+  );
 
   const onNodeClick = useCallback(
     (_: unknown, node: Node) => {
@@ -144,10 +189,10 @@ export default function SystemDiagram({ components, onSelect }: SystemDiagramPro
         onNodeClick={onNodeClick}
         nodeTypes={nodeTypes}
         fitView
-        className="bg-gray-950"
+        className="bg-background"
       >
-        <Background color="#374151" gap={20} />
-        <Controls className="!bg-gray-800 !border-gray-700 !text-white [&>button]:!bg-gray-800 [&>button]:!border-gray-700 [&>button]:!text-white" />
+        <Background color="hsl(217.2 32.6% 17.5%)" gap={20} />
+        <Controls className="!bg-card !border-border !text-foreground [&>button]:!bg-card [&>button]:!border-border [&>button]:!text-foreground" />
       </ReactFlow>
     </div>
   );

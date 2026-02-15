@@ -1,19 +1,48 @@
 "use client";
 
-import { useEffect, useState, FormEvent } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import dynamic from "next/dynamic";
 import { useAuthStore } from "@/stores/auth-store";
 import { useProjectStore } from "@/stores/project-store";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import {
+  Sun,
+  Wind,
+  Battery,
+  MapPin,
+  Plus,
+  Trash2,
+  Zap,
+  FolderOpen,
+} from "lucide-react";
+
+const LocationPicker = dynamic(
+  () => import("@/components/configure/location-picker"),
+  { ssr: false }
+);
 
 export default function DashboardPage() {
   const router = useRouter();
-  const { user, isAuthenticated, isLoading, checkAuth, logout } = useAuthStore();
-  const { projects, fetchProjects, createProject, deleteProject } = useProjectStore();
+  const { isAuthenticated, isLoading, checkAuth } = useAuthStore();
+  const { projects, fetchProjects, createProject, deleteProject } =
+    useProjectStore();
 
   const [showCreate, setShowCreate] = useState(false);
   const [name, setName] = useState("");
-  const [latitude, setLatitude] = useState("0");
-  const [longitude, setLongitude] = useState("0");
+  const [latitude, setLatitude] = useState(0);
+  const [longitude, setLongitude] = useState(0);
   const [description, setDescription] = useState("");
 
   useEffect(() => {
@@ -21,35 +50,31 @@ export default function DashboardPage() {
   }, [checkAuth]);
 
   useEffect(() => {
-    if (!isLoading && !isAuthenticated) {
-      router.replace("/login");
-    }
-  }, [isAuthenticated, isLoading, router]);
-
-  useEffect(() => {
     if (isAuthenticated) {
       fetchProjects();
     }
   }, [isAuthenticated, fetchProjects]);
 
-  const handleCreate = async (e: FormEvent) => {
-    e.preventDefault();
+  const handleCreate = async () => {
+    if (!name) return;
     const project = await createProject({
       name,
       description: description || undefined,
-      latitude: parseFloat(latitude),
-      longitude: parseFloat(longitude),
+      latitude,
+      longitude,
     });
     setShowCreate(false);
     setName("");
     setDescription("");
+    setLatitude(0);
+    setLongitude(0);
     router.push(`/projects/${project.id}`);
   };
 
   if (isLoading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
-        <div className="animate-spin h-8 w-8 border-2 border-blue-500 border-t-transparent rounded-full" />
+        <div className="animate-spin h-8 w-8 border-2 border-primary border-t-transparent rounded-full" />
       </div>
     );
   }
@@ -57,153 +82,165 @@ export default function DashboardPage() {
   return (
     <div className="min-h-screen">
       {/* Header */}
-      <header className="border-b border-gray-800 bg-gray-900/50 backdrop-blur">
+      <header className="border-b border-border bg-background/80 backdrop-blur-lg sticky top-0 z-40">
         <div className="max-w-7xl mx-auto px-4 py-4 flex items-center justify-between">
-          <h1 className="text-xl font-bold text-blue-400">GridFlow</h1>
-          <div className="flex items-center gap-4">
-            <span className="text-sm text-gray-400">{user?.email}</span>
-            <button
-              onClick={logout}
-              className="text-sm text-gray-400 hover:text-white transition-colors"
-            >
-              Sign Out
-            </button>
+          <div className="flex items-center gap-3">
+            <div className="h-8 w-8 rounded-lg bg-gradient-to-br from-blue-500 to-cyan-500 flex items-center justify-center">
+              <Zap className="h-4 w-4 text-white" />
+            </div>
+            <h1 className="text-xl font-bold gradient-text">GridFlow</h1>
           </div>
         </div>
       </header>
 
       {/* Main */}
       <main className="max-w-7xl mx-auto px-4 py-8">
+        {/* Welcome + CTA */}
         <div className="flex items-center justify-between mb-8">
-          <h2 className="text-2xl font-semibold">Projects</h2>
-          <button
-            onClick={() => setShowCreate(true)}
-            className="bg-blue-600 hover:bg-blue-700 text-white rounded-lg px-4 py-2 text-sm font-medium transition-colors"
-          >
+          <div>
+            <h2 className="text-2xl font-semibold">Projects</h2>
+            <p className="text-muted-foreground text-sm mt-1">
+              Design and simulate hybrid power systems
+            </p>
+          </div>
+          <Button variant="gradient" onClick={() => setShowCreate(true)}>
+            <Plus className="h-4 w-4" />
             New Project
-          </button>
+          </Button>
         </div>
 
-        {/* Create Project Modal */}
-        {showCreate && (
-          <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
-            <form
-              onSubmit={handleCreate}
-              className="bg-gray-900 border border-gray-800 rounded-xl p-6 w-full max-w-lg space-y-4"
-            >
-              <h3 className="text-lg font-semibold">Create New Project</h3>
+        {/* Create Project Dialog */}
+        <Dialog open={showCreate} onOpenChange={setShowCreate}>
+          <DialogContent className="max-w-2xl">
+            <DialogHeader>
+              <DialogTitle>Create New Project</DialogTitle>
+              <DialogDescription>
+                Set up a new power system simulation project. Choose a location
+                on the map.
+              </DialogDescription>
+            </DialogHeader>
 
+            <div className="space-y-4">
               <div>
-                <label className="block text-sm text-gray-400 mb-1">Project Name</label>
-                <input
-                  type="text"
+                <Label>Project Name</Label>
+                <Input
                   value={name}
                   onChange={(e) => setName(e.target.value)}
-                  className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  required
+                  placeholder="e.g. Nairobi Solar + Battery"
                 />
               </div>
 
               <div>
-                <label className="block text-sm text-gray-400 mb-1">Description</label>
-                <textarea
+                <Label>Description</Label>
+                <Input
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
-                  className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  rows={2}
+                  placeholder="Optional project description"
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm text-gray-400 mb-1">Latitude</label>
-                  <input
-                    type="number"
-                    step="any"
-                    value={latitude}
-                    onChange={(e) => setLatitude(e.target.value)}
-                    className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    required
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm text-gray-400 mb-1">Longitude</label>
-                  <input
-                    type="number"
-                    step="any"
-                    value={longitude}
-                    onChange={(e) => setLongitude(e.target.value)}
-                    className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    required
-                  />
-                </div>
+              <div>
+                <Label>Location</Label>
+                <LocationPicker
+                  latitude={latitude}
+                  longitude={longitude}
+                  onChange={(lat, lng) => {
+                    setLatitude(lat);
+                    setLongitude(lng);
+                  }}
+                />
               </div>
+            </div>
 
-              <div className="flex gap-3 justify-end">
-                <button
-                  type="button"
-                  onClick={() => setShowCreate(false)}
-                  className="px-4 py-2 text-sm text-gray-400 hover:text-white transition-colors"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="bg-blue-600 hover:bg-blue-700 text-white rounded-lg px-4 py-2 text-sm font-medium transition-colors"
-                >
-                  Create
-                </button>
-              </div>
-            </form>
-          </div>
-        )}
+            <DialogFooter>
+              <Button variant="ghost" onClick={() => setShowCreate(false)}>
+                Cancel
+              </Button>
+              <Button onClick={handleCreate} disabled={!name}>
+                Create Project
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
 
         {/* Project Grid */}
         {projects.length === 0 ? (
-          <div className="text-center py-16 text-gray-500">
-            <p className="text-lg">No projects yet</p>
-            <p className="text-sm mt-1">Create your first project to get started</p>
-          </div>
+          <Card variant="glass" className="card-lift">
+            <CardContent className="flex flex-col items-center justify-center py-16">
+              <div className="h-16 w-16 rounded-2xl bg-muted flex items-center justify-center mb-4">
+                <FolderOpen className="h-8 w-8 text-muted-foreground" />
+              </div>
+              <h3 className="text-lg font-semibold mb-1">No projects yet</h3>
+              <p className="text-muted-foreground text-sm mb-6">
+                Create your first project to start designing power systems
+              </p>
+              <Button variant="gradient" onClick={() => setShowCreate(true)}>
+                <Plus className="h-4 w-4" />
+                Create First Project
+              </Button>
+            </CardContent>
+          </Card>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {projects.map((project) => (
-              <div
+              <Card
                 key={project.id}
+                variant="glass"
+                className="card-lift cursor-pointer group"
                 onClick={() => router.push(`/projects/${project.id}`)}
-                className="bg-gray-900 border border-gray-800 rounded-xl p-5 cursor-pointer hover:border-gray-700 transition-colors group"
               >
-                <div className="flex items-start justify-between">
-                  <h3 className="font-semibold group-hover:text-blue-400 transition-colors">
-                    {project.name}
-                  </h3>
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      if (confirm("Delete this project?")) {
-                        deleteProject(project.id);
-                      }
-                    }}
-                    className="text-gray-600 hover:text-red-400 text-sm transition-colors"
-                  >
-                    Delete
-                  </button>
-                </div>
-                {project.description && (
-                  <p className="text-sm text-gray-400 mt-1 line-clamp-2">
-                    {project.description}
+                <CardContent className="p-5">
+                  <div className="flex items-start justify-between">
+                    <div className="flex-1 min-w-0">
+                      <h3 className="font-semibold group-hover:text-primary transition-colors truncate">
+                        {project.name}
+                      </h3>
+                      {project.description && (
+                        <p className="text-sm text-muted-foreground mt-1 line-clamp-2">
+                          {project.description}
+                        </p>
+                      )}
+                    </div>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (confirm("Delete this project?")) {
+                          deleteProject(project.id);
+                        }
+                      }}
+                      className="text-muted-foreground hover:text-destructive transition-colors ml-2 shrink-0"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  </div>
+
+                  <div className="flex items-center gap-1.5 mt-3 text-xs text-muted-foreground">
+                    <MapPin className="h-3 w-3" />
+                    <span>
+                      {project.latitude.toFixed(2)},{" "}
+                      {project.longitude.toFixed(2)}
+                    </span>
+                  </div>
+
+                  <div className="flex items-center gap-3 mt-3">
+                    <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                      <Sun className="h-3 w-3 text-amber-400" />
+                      <Wind className="h-3 w-3 text-sky-400" />
+                      <Battery className="h-3 w-3 text-emerald-400" />
+                    </div>
+                    <div className="flex-1" />
+                    <span className="text-xs text-muted-foreground">
+                      {project.lifetime_years}yr &middot;{" "}
+                      {(project.discount_rate * 100).toFixed(0)}% DR
+                    </span>
+                  </div>
+
+                  <p className="text-xs text-muted-foreground/60 mt-2">
+                    Updated{" "}
+                    {new Date(project.updated_at).toLocaleDateString()}
                   </p>
-                )}
-                <div className="flex gap-4 mt-3 text-xs text-gray-500">
-                  <span>
-                    {project.latitude.toFixed(2)}, {project.longitude.toFixed(2)}
-                  </span>
-                  <span>{project.lifetime_years}yr</span>
-                  <span>{(project.discount_rate * 100).toFixed(0)}% DR</span>
-                </div>
-                <p className="text-xs text-gray-600 mt-2">
-                  Updated {new Date(project.updated_at).toLocaleDateString()}
-                </p>
-              </div>
+                </CardContent>
+              </Card>
             ))}
           </div>
         )}

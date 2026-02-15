@@ -3,7 +3,20 @@
 import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { useProjectStore } from "@/stores/project-store";
-import { getSimulationStatus } from "@/lib/api";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Badge } from "@/components/ui/badge";
+import { Progress } from "@/components/ui/progress";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Play, Loader2, AlertTriangle, BarChart3 } from "lucide-react";
 import type { DispatchStrategy } from "@/types";
 
 interface SimulationPanelProps {
@@ -82,145 +95,192 @@ export default function SimulationPanel({ projectId }: SimulationPanelProps) {
 
   const canRun = weatherDatasets.length > 0 && loadProfiles.length > 0;
 
+  const statusBadge = (status: string) => {
+    switch (status) {
+      case "completed":
+        return <Badge variant="success">completed</Badge>;
+      case "failed":
+        return <Badge variant="destructive">failed</Badge>;
+      case "running":
+        return <Badge variant="info">running</Badge>;
+      default:
+        return <Badge variant="secondary">pending</Badge>;
+    }
+  };
+
   return (
     <div className="max-w-4xl mx-auto space-y-8">
       {/* New Simulation */}
-      <section>
-        <h3 className="text-lg font-semibold mb-4">Run Simulation</h3>
-
-        {!canRun ? (
-          <div className="bg-yellow-900/20 border border-yellow-800 rounded-lg p-4 text-sm text-yellow-300">
-            Upload weather data and a load profile before running simulations.
-          </div>
-        ) : (
-          <div className="bg-gray-900 border border-gray-800 rounded-xl p-5 space-y-4">
-            <div>
-              <label className="block text-sm text-gray-400 mb-1">Simulation Name</label>
-              <input
-                type="text"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="e.g. Baseline - Load Following"
-                className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
+      <Card variant="glass">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Play className="h-5 w-5 text-emerald-400" />
+            Run Simulation
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          {!canRun ? (
+            <div className="flex items-center gap-3 p-4 rounded-xl bg-amber-500/10 border border-amber-500/20">
+              <AlertTriangle className="h-5 w-5 text-amber-400 shrink-0" />
+              <p className="text-sm text-amber-300">
+                Upload weather data and a load profile before running
+                simulations.
+              </p>
             </div>
-
-            <div className="grid grid-cols-3 gap-4">
+          ) : (
+            <div className="space-y-4">
               <div>
-                <label className="block text-sm text-gray-400 mb-1">Dispatch Strategy</label>
-                <select
-                  value={strategy}
-                  onChange={(e) => setStrategy(e.target.value as DispatchStrategy)}
-                  className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                  {(Object.keys(DISPATCH_LABELS) as DispatchStrategy[]).map((s) => (
-                    <option key={s} value={s}>
-                      {DISPATCH_LABELS[s]}
-                    </option>
-                  ))}
-                </select>
+                <Label>Simulation Name</Label>
+                <Input
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  placeholder="e.g. Baseline - Load Following"
+                />
               </div>
 
-              <div>
-                <label className="block text-sm text-gray-400 mb-1">Weather Dataset</label>
-                <select
-                  value={weatherId}
-                  onChange={(e) => setWeatherId(e.target.value)}
-                  className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                  {weatherDatasets.map((ds) => (
-                    <option key={ds.id} value={ds.id}>
-                      {ds.name}
-                    </option>
-                  ))}
-                </select>
+              <div className="grid grid-cols-3 gap-4">
+                <div>
+                  <Label>Dispatch Strategy</Label>
+                  <Select
+                    value={strategy}
+                    onValueChange={(v) => setStrategy(v as DispatchStrategy)}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {(
+                        Object.keys(DISPATCH_LABELS) as DispatchStrategy[]
+                      ).map((s) => (
+                        <SelectItem key={s} value={s}>
+                          {DISPATCH_LABELS[s]}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div>
+                  <Label>Weather Dataset</Label>
+                  <Select value={weatherId} onValueChange={setWeatherId}>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {weatherDatasets.map((ds) => (
+                        <SelectItem key={ds.id} value={ds.id}>
+                          {ds.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div>
+                  <Label>Load Profile</Label>
+                  <Select value={loadId} onValueChange={setLoadId}>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {loadProfiles.map((lp) => (
+                        <SelectItem key={lp.id} value={lp.id}>
+                          {lp.name} ({(lp.annual_kwh / 1000).toFixed(0)}{" "}
+                          MWh/yr)
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
 
-              <div>
-                <label className="block text-sm text-gray-400 mb-1">Load Profile</label>
-                <select
-                  value={loadId}
-                  onChange={(e) => setLoadId(e.target.value)}
-                  className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                  {loadProfiles.map((lp) => (
-                    <option key={lp.id} value={lp.id}>
-                      {lp.name} ({(lp.annual_kwh / 1000).toFixed(0)} MWh/yr)
-                    </option>
-                  ))}
-                </select>
-              </div>
+              <Button
+                variant="success"
+                onClick={handleRun}
+                disabled={running || !name}
+              >
+                {running ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Play className="h-4 w-4" />
+                )}
+                {running ? "Launching..." : "Run Simulation"}
+              </Button>
             </div>
-
-            <button
-              onClick={handleRun}
-              disabled={running || !name}
-              className="bg-green-600 hover:bg-green-700 disabled:opacity-50 text-white rounded-lg px-6 py-2 text-sm font-medium transition-colors"
-            >
-              {running ? "Launching..." : "Run Simulation"}
-            </button>
-          </div>
-        )}
-      </section>
+          )}
+        </CardContent>
+      </Card>
 
       {/* Simulation History */}
-      <section>
-        <h3 className="text-lg font-semibold mb-4">Simulation History</h3>
-        {simulations.length === 0 ? (
-          <p className="text-gray-500 text-sm">No simulations yet</p>
-        ) : (
-          <div className="space-y-2">
-            {simulations.map((sim) => (
-              <div
-                key={sim.id}
-                className="bg-gray-900 border border-gray-800 rounded-lg p-4 flex items-center justify-between"
-              >
-                <div>
-                  <span className="font-medium text-sm">{sim.name}</span>
-                  <span className="text-xs text-gray-500 ml-3">
-                    {DISPATCH_LABELS[sim.dispatch_strategy] || sim.dispatch_strategy}
-                  </span>
-                </div>
-
-                <div className="flex items-center gap-4">
-                  {(sim.status === "pending" || sim.status === "running") && (
-                    <div className="flex items-center gap-2">
-                      <div className="animate-spin h-4 w-4 border-2 border-blue-500 border-t-transparent rounded-full" />
-                      <span className="text-sm text-blue-400">
-                        {Math.round(sim.progress)}%
-                      </span>
+      <Card variant="glass">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <BarChart3 className="h-5 w-5 text-blue-400" />
+            Simulation History
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          {simulations.length === 0 ? (
+            <p className="text-muted-foreground text-sm">
+              No simulations yet
+            </p>
+          ) : (
+            <div className="space-y-3">
+              {simulations.map((sim) => (
+                <Card key={sim.id} variant="outlined">
+                  <CardContent className="p-4">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <span className="font-medium text-sm">
+                          {sim.name}
+                        </span>
+                        <Badge variant="secondary">
+                          {DISPATCH_LABELS[sim.dispatch_strategy] ||
+                            sim.dispatch_strategy}
+                        </Badge>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        {sim.status === "completed" && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() =>
+                              router.push(
+                                `/projects/${projectId}/results/${sim.id}`
+                              )
+                            }
+                          >
+                            View Results
+                          </Button>
+                        )}
+                        {sim.status === "failed" && sim.error_message && (
+                          <span
+                            className="text-xs text-destructive max-w-[200px] truncate"
+                            title={sim.error_message}
+                          >
+                            {sim.error_message}
+                          </span>
+                        )}
+                        {statusBadge(sim.status)}
+                      </div>
                     </div>
-                  )}
-                  {sim.status === "completed" && (
-                    <button
-                      onClick={() => router.push(`/projects/${projectId}/results/${sim.id}`)}
-                      className="text-sm text-blue-400 hover:underline"
-                    >
-                      View Results
-                    </button>
-                  )}
-                  {sim.status === "failed" && (
-                    <span className="text-sm text-red-400" title={sim.error_message || ""}>
-                      Failed
-                    </span>
-                  )}
-                  <span
-                    className={`text-xs px-2 py-0.5 rounded-full ${
-                      sim.status === "completed"
-                        ? "bg-green-900/30 text-green-400"
-                        : sim.status === "failed"
-                        ? "bg-red-900/30 text-red-400"
-                        : "bg-blue-900/30 text-blue-400"
-                    }`}
-                  >
-                    {sim.status}
-                  </span>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </section>
+
+                    {(sim.status === "pending" ||
+                      sim.status === "running") && (
+                      <div className="mt-3 space-y-1">
+                        <Progress value={sim.progress} />
+                        <p className="text-xs text-muted-foreground text-right">
+                          {Math.round(sim.progress)}%
+                        </p>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 }

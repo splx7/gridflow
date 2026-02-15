@@ -1,3 +1,4 @@
+import math
 import uuid
 import zlib
 
@@ -24,7 +25,17 @@ router = APIRouter()
 def _decompress_timeseries(data: bytes | None) -> list[float] | None:
     if data is None:
         return None
-    return np.frombuffer(zlib.decompress(data), dtype=np.float64).tolist()
+    arr = np.frombuffer(zlib.decompress(data), dtype=np.float64)
+    return [0.0 if (math.isinf(v) or math.isnan(v)) else v for v in arr.tolist()]
+
+
+def _safe_float(value: float | None) -> float | None:
+    """Convert inf/nan to None for JSON-safe serialization."""
+    if value is None:
+        return None
+    if math.isinf(value) or math.isnan(value):
+        return None
+    return value
 
 
 @router.post(
@@ -120,7 +131,20 @@ async def get_economics(
     sr = result.scalar_one_or_none()
     if not sr:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Results not found")
-    return sr
+
+    # Sanitize inf/nan values that break JSON serialization
+    return {
+        "npc": _safe_float(sr.npc) or 0.0,
+        "lcoe": _safe_float(sr.lcoe) or 0.0,
+        "irr": _safe_float(sr.irr),
+        "payback_years": _safe_float(sr.payback_years),
+        "renewable_fraction": _safe_float(sr.renewable_fraction) or 0.0,
+        "co2_emissions_kg": _safe_float(sr.co2_emissions_kg) or 0.0,
+        "cost_breakdown": {
+            k: (_safe_float(v) or 0.0) if isinstance(v, float) else v
+            for k, v in (sr.cost_breakdown or {}).items()
+        },
+    }
 
 
 @router.get("/simulations/{simulation_id}/results/timeseries")

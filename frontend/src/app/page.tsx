@@ -6,7 +6,7 @@ import { useAuthStore } from "@/stores/auth-store";
 
 export default function Home() {
   const router = useRouter();
-  const { isAuthenticated, isLoading, checkAuth } = useAuthStore();
+  const { isLoading, checkAuth } = useAuthStore();
 
   useEffect(() => {
     checkAuth();
@@ -14,13 +14,13 @@ export default function Home() {
 
   useEffect(() => {
     if (!isLoading) {
-      router.replace(isAuthenticated ? "/dashboard" : "/login");
+      router.replace("/dashboard");
     }
-  }, [isAuthenticated, isLoading, router]);
+  }, [isLoading, router]);
 
   return (
     <div className="flex items-center justify-center min-h-screen">
-      <div className="animate-spin h-8 w-8 border-2 border-blue-500 border-t-transparent rounded-full" />
+      <div className="animate-spin h-8 w-8 border-2 border-primary border-t-transparent rounded-full" />
     </div>
   );
 }

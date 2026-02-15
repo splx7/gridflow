@@ -21,6 +21,9 @@ class Settings(BaseSettings):
     access_token_expire_minutes: int = 60
     refresh_token_expire_days: int = 7
 
+    # CORS
+    cors_origins: str = "http://localhost:3000,http://100.108.47.61:3000"
+
     # PVGIS
     pvgis_base_url: str = "https://re.jrc.ec.europa.eu/api/v5_3"
 

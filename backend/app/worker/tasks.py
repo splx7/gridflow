@@ -9,11 +9,7 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.worker import celery_app
-from app.models.database import Base
-from app.models.simulation import Simulation, SimulationResult
-from app.models.component import Component
-from app.models.weather import WeatherDataset
-from app.models.load_profile import LoadProfile
+from app.models import Simulation, SimulationResult, Component, WeatherDataset, LoadProfile
 
 sync_engine = create_engine(settings.sync_database_url)
 
@@ -66,10 +62,28 @@ def run_simulation(self, simulation_id: str) -> dict:
             sim.progress = 10.0
             db.commit()
 
-            # Parse components
+            # Parse components and transform configs for engine compatibility
+            project = sim.project
             component_configs = {}
             for comp in components:
-                component_configs[comp.component_type] = comp.config
+                cfg = dict(comp.config)  # copy to avoid mutating DB object
+                if comp.component_type == "solar_pv":
+                    # Engine expects capacity_kwp, economics expects capacity_kw
+                    if "capacity_kw" in cfg and "capacity_kwp" not in cfg:
+                        cfg["capacity_kwp"] = cfg["capacity_kw"]
+                    # PV needs latitude/longitude from project
+                    cfg.setdefault("latitude", project.latitude)
+                    cfg.setdefault("longitude", project.longitude)
+                elif comp.component_type == "diesel_generator":
+                    # Engine expects fuel_curve dict and fuel_price
+                    if "fuel_curve_a" in cfg:
+                        cfg["fuel_curve"] = {
+                            "a0": cfg.pop("fuel_curve_a"),
+                            "a1": cfg.pop("fuel_curve_b", 0.246),
+                        }
+                    if "fuel_price_per_liter" in cfg and "fuel_price" not in cfg:
+                        cfg["fuel_price"] = cfg.pop("fuel_price_per_liter")
+                component_configs[comp.component_type] = cfg
 
             # Run simulation engine
             from engine.simulation.runner import SimulationRunner
@@ -96,7 +110,6 @@ def run_simulation(self, simulation_id: str) -> dict:
             # Store results
             from engine.economics.metrics import compute_economics
 
-            project = sim.project
             econ = compute_economics(
                 results=results,
                 components=component_configs,

@@ -1,6 +1,11 @@
 import { create } from "zustand";
 import type { User } from "@/types";
-import { getMe, login as apiLogin, register as apiRegister } from "@/lib/api";
+import {
+  getMe,
+  login as apiLogin,
+  register as apiRegister,
+  loginAnonymous,
+} from "@/lib/api";
 
 interface AuthState {
   user: User | null;
@@ -42,13 +47,19 @@ export const useAuthStore = create<AuthState>((set) => ({
   checkAuth: async () => {
     try {
       const token = localStorage.getItem("access_token");
-      if (!token) {
-        set({ isLoading: false, isAuthenticated: false });
+      if (token) {
+        const user = await getMe();
+        set({ user, isAuthenticated: true, isLoading: false });
         return;
       }
+      // No token — auto-acquire anonymous session
+      const tokens = await loginAnonymous();
+      localStorage.setItem("access_token", tokens.access_token);
+      localStorage.setItem("refresh_token", tokens.refresh_token);
       const user = await getMe();
       set({ user, isAuthenticated: true, isLoading: false });
     } catch {
+      // If anonymous auth also fails (backend down), still mark as loaded
       set({ user: null, isAuthenticated: false, isLoading: false });
     }
   },

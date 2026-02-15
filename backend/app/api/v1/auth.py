@@ -81,6 +81,25 @@ async def refresh(body: RefreshRequest, db: AsyncSession = Depends(get_db)):
     )
 
 
+@router.post("/anonymous", response_model=TokenResponse, status_code=status.HTTP_201_CREATED)
+async def anonymous_login(db: AsyncSession = Depends(get_db)):
+    """Create an anonymous user and return tokens. For dev/demo convenience."""
+    anon_id = uuid.uuid4().hex[:8]
+    user = User(
+        email=f"anon-{anon_id}@gridflow.local",
+        hashed_password=hash_password(uuid.uuid4().hex),
+        full_name=f"Anonymous User",
+    )
+    db.add(user)
+    await db.commit()
+    await db.refresh(user)
+
+    return TokenResponse(
+        access_token=create_access_token(user.id),
+        refresh_token=create_refresh_token(user.id),
+    )
+
+
 @router.get("/me", response_model=UserResponse)
 async def me(user: User = Depends(get_current_user)):
     return user

@@ -32,3 +32,14 @@ class LoadProfileResponse(BaseModel):
 class LoadProfileCreate(BaseModel):
     name: str = Field(max_length=255)
     profile_type: str = Field(default="custom")
+
+
+class GenerateLoadProfileRequest(BaseModel):
+    scenario: str = Field(
+        description="One of: residential_small, residential_large, commercial_office, "
+        "commercial_retail, industrial_light, industrial_heavy, agricultural"
+    )
+    annual_kwh: float | None = Field(
+        default=None,
+        description="Override annual energy consumption in kWh. If omitted, uses scenario default.",
+    )
