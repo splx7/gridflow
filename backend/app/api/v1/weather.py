@@ -119,53 +119,6 @@ async def list_weather(
     return result.scalars().all()
 
 
-# Load profiles
-@router.post(
-    "/{project_id}/load-profiles",
-    response_model=LoadProfileResponse,
-    status_code=status.HTTP_201_CREATED,
-)
-async def upload_load_profile(
-    project_id: uuid.UUID,
-    file: UploadFile,
-    user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-):
-    await _get_user_project(project_id, user, db)
-
-    content = await file.read()
-    lines = content.decode("utf-8").strip().split("\n")
-    # Expect CSV with one column of hourly kW values (8760 rows)
-    values = []
-    for line in lines:
-        line = line.strip()
-        if not line or line.startswith("#"):
-            continue
-        try:
-            values.append(float(line.split(",")[0]))
-        except ValueError:
-            continue
-
-    if len(values) != 8760:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Expected 8760 hourly values, got {len(values)}",
-        )
-
-    arr = np.array(values, dtype=np.float64)
-    profile = LoadProfile(
-        project_id=project_id,
-        name=file.filename or "Uploaded Load",
-        profile_type="custom",
-        annual_kwh=float(arr.sum()),
-        hourly_kw=_compress_array(arr),
-    )
-    db.add(profile)
-    await db.commit()
-    await db.refresh(profile)
-    return profile
-
-
 # ── Synthetic load profile generation ──────────────────────────
 
 _SCENARIO_DEFAULTS: dict[str, dict] = {
@@ -353,3 +306,49 @@ async def list_load_profiles(
         select(LoadProfile).where(LoadProfile.project_id == project_id)
     )
     return result.scalars().all()
+
+
+@router.post(
+    "/{project_id}/load-profiles",
+    response_model=LoadProfileResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def upload_load_profile(
+    project_id: uuid.UUID,
+    file: UploadFile,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    await _get_user_project(project_id, user, db)
+
+    content = await file.read()
+    lines = content.decode("utf-8").strip().split("\n")
+    # Expect CSV with one column of hourly kW values (8760 rows)
+    values = []
+    for line in lines:
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        try:
+            values.append(float(line.split(",")[0]))
+        except ValueError:
+            continue
+
+    if len(values) != 8760:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Expected 8760 hourly values, got {len(values)}",
+        )
+
+    arr = np.array(values, dtype=np.float64)
+    profile = LoadProfile(
+        project_id=project_id,
+        name=file.filename or "Uploaded Load",
+        profile_type="custom",
+        annual_kwh=float(arr.sum()),
+        hourly_kw=_compress_array(arr),
+    )
+    db.add(profile)
+    await db.commit()
+    await db.refresh(profile)
+    return profile

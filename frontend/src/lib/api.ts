@@ -1,4 +1,4 @@
-import axios, { AxiosInstance, InternalAxiosRequestConfig } from "axios";
+import axios, { AxiosError, AxiosInstance, InternalAxiosRequestConfig } from "axios";
 import type {
   Component,
   EconomicsResult,
@@ -14,6 +14,25 @@ import type {
 } from "@/types";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+
+export function getErrorMessage(error: unknown): string {
+  if (error instanceof AxiosError) {
+    const detail = error.response?.data?.detail;
+    if (typeof detail === "string") return detail;
+    if (Array.isArray(detail) && detail.length > 0) {
+      return detail.map((d: { msg?: string }) => d.msg || String(d)).join("; ");
+    }
+    if (error.response?.status) {
+      return `Request failed (${error.response.status})`;
+    }
+    if (error.code === "ERR_NETWORK") {
+      return "Network error — is the backend running?";
+    }
+    return error.message;
+  }
+  if (error instanceof Error) return error.message;
+  return "An unexpected error occurred";
+}
 
 function createClient(): AxiosInstance {
   const client = axios.create({

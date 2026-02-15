@@ -73,8 +73,13 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
 
   fetchProjects: async () => {
     set({ isLoading: true });
-    const projects = await api.listProjects();
-    set({ projects, isLoading: false });
+    try {
+      const projects = await api.listProjects();
+      set({ projects, isLoading: false });
+    } catch (error) {
+      set({ isLoading: false });
+      throw error;
+    }
   },
 
   setCurrentProject: (project) => set({ currentProject: project }),

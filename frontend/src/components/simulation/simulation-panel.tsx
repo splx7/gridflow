@@ -2,7 +2,9 @@
 
 import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
+import { toast } from "sonner";
 import { useProjectStore } from "@/stores/project-store";
+import { getErrorMessage } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -68,7 +70,7 @@ export default function SimulationPanel({ projectId }: SimulationPanelProps) {
 
     if (runningSimIds.length > 0) {
       pollingRef.current = setInterval(() => {
-        fetchSimulations(projectId);
+        fetchSimulations(projectId).catch(() => {});
       }, 3000);
     }
 
@@ -88,6 +90,9 @@ export default function SimulationPanel({ projectId }: SimulationPanelProps) {
         load_profile_id: loadId,
       });
       setName("");
+      toast.success("Simulation started");
+    } catch (err) {
+      toast.error(getErrorMessage(err));
     } finally {
       setRunning(false);
     }

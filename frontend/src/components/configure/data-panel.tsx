@@ -1,8 +1,9 @@
 "use client";
 
 import { useRef, useState, useCallback } from "react";
+import { toast } from "sonner";
 import { useProjectStore } from "@/stores/project-store";
-import { uploadWeather, uploadLoadProfile } from "@/lib/api";
+import { uploadWeather, uploadLoadProfile, getErrorMessage } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -119,19 +120,32 @@ export default function DataPanel({ projectId }: DataPanelProps) {
     setFetchingPVGIS(true);
     try {
       await fetchPVGIS(projectId);
+      toast.success("PVGIS weather data loaded");
+    } catch (err) {
+      toast.error(getErrorMessage(err));
     } finally {
       setFetchingPVGIS(false);
     }
   };
 
   const handleUploadWeather = async (file: File) => {
-    await uploadWeather(projectId, file);
-    await fetchWeather(projectId);
+    try {
+      await uploadWeather(projectId, file);
+      await fetchWeather(projectId);
+      toast.success("Weather data uploaded");
+    } catch (err) {
+      toast.error(getErrorMessage(err));
+    }
   };
 
   const handleUploadLoad = async (file: File) => {
-    await uploadLoadProfile(projectId, file);
-    await fetchLoadProfiles(projectId);
+    try {
+      await uploadLoadProfile(projectId, file);
+      await fetchLoadProfiles(projectId);
+      toast.success("Load profile uploaded");
+    } catch (err) {
+      toast.error(getErrorMessage(err));
+    }
   };
 
   const handleGenerateScenario = async (scenario: ScenarioPreset) => {
@@ -140,6 +154,9 @@ export default function DataPanel({ projectId }: DataPanelProps) {
       await generateLoadProfile(projectId, {
         scenario: scenario.key,
       });
+      toast.success(`${scenario.label} profile generated`);
+    } catch (err) {
+      toast.error(getErrorMessage(err));
     } finally {
       setGeneratingScenario(null);
     }

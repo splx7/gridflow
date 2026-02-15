@@ -1,7 +1,9 @@
 "use client";
 
 import { useState } from "react";
+import { toast } from "sonner";
 import { useProjectStore } from "@/stores/project-store";
+import { getErrorMessage } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -195,11 +197,16 @@ export default function ComponentPanel({
   const [saving, setSaving] = useState(false);
 
   const handleAdd = async (type: ComponentType) => {
-    await addComponent(projectId, {
-      component_type: type,
-      name: COMPONENT_LABELS[type],
-      config: COMPONENT_DEFAULTS[type],
-    });
+    try {
+      await addComponent(projectId, {
+        component_type: type,
+        name: COMPONENT_LABELS[type],
+        config: COMPONENT_DEFAULTS[type],
+      });
+      toast.success(`${COMPONENT_LABELS[type]} added`);
+    } catch (err) {
+      toast.error(getErrorMessage(err));
+    }
   };
 
   const handleCardClick = (compId: string, config: Record<string, unknown>) => {
@@ -224,6 +231,9 @@ export default function ComponentPanel({
       await updateComponent(projectId, componentId, { config: editConfig });
       onSelect(null);
       setEditConfig(null);
+      toast.success("Component updated");
+    } catch (err) {
+      toast.error(getErrorMessage(err));
     } finally {
       setSaving(false);
     }
@@ -279,7 +289,9 @@ export default function ComponentPanel({
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
-                      removeComponent(projectId, comp.id);
+                      removeComponent(projectId, comp.id)
+                        .then(() => toast.success("Component removed"))
+                        .catch((err) => toast.error(getErrorMessage(err)));
                     }}
                     className="text-muted-foreground hover:text-destructive transition-colors"
                   >

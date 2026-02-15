@@ -2,9 +2,10 @@
 
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
+import { toast } from "sonner";
 import { useAuthStore } from "@/stores/auth-store";
 import { useProjectStore } from "@/stores/project-store";
-import { compareSimulations } from "@/lib/api";
+import { compareSimulations, getErrorMessage } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -45,7 +46,7 @@ export default function ComparePage() {
 
   useEffect(() => {
     if (isAuthenticated && projectId) {
-      fetchSimulations(projectId);
+      fetchSimulations(projectId).catch((err) => toast.error(getErrorMessage(err)));
     }
   }, [isAuthenticated, projectId, fetchSimulations]);
 
@@ -63,6 +64,8 @@ export default function ComparePage() {
     try {
       const data = await compareSimulations(selected);
       setComparison(data.comparisons as unknown as ComparisonRow[]);
+    } catch (err) {
+      toast.error(getErrorMessage(err));
     } finally {
       setLoading(false);
     }

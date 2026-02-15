@@ -3,8 +3,10 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import dynamic from "next/dynamic";
+import { toast } from "sonner";
 import { useAuthStore } from "@/stores/auth-store";
 import { useProjectStore } from "@/stores/project-store";
+import { getErrorMessage } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -51,24 +53,29 @@ export default function DashboardPage() {
 
   useEffect(() => {
     if (isAuthenticated) {
-      fetchProjects();
+      fetchProjects().catch((err) => toast.error(getErrorMessage(err)));
     }
   }, [isAuthenticated, fetchProjects]);
 
   const handleCreate = async () => {
     if (!name) return;
-    const project = await createProject({
-      name,
-      description: description || undefined,
-      latitude,
-      longitude,
-    });
-    setShowCreate(false);
-    setName("");
-    setDescription("");
-    setLatitude(0);
-    setLongitude(0);
-    router.push(`/projects/${project.id}`);
+    try {
+      const project = await createProject({
+        name,
+        description: description || undefined,
+        latitude,
+        longitude,
+      });
+      setShowCreate(false);
+      setName("");
+      setDescription("");
+      setLatitude(0);
+      setLongitude(0);
+      toast.success("Project created");
+      router.push(`/projects/${project.id}`);
+    } catch (err) {
+      toast.error(getErrorMessage(err));
+    }
   };
 
   if (isLoading) {
@@ -205,7 +212,9 @@ export default function DashboardPage() {
                       onClick={(e) => {
                         e.stopPropagation();
                         if (confirm("Delete this project?")) {
-                          deleteProject(project.id);
+                          deleteProject(project.id)
+                            .then(() => toast.success("Project deleted"))
+                            .catch((err) => toast.error(getErrorMessage(err)));
                         }
                       }}
                       className="text-muted-foreground hover:text-destructive transition-colors ml-2 shrink-0"

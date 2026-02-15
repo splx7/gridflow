@@ -2,8 +2,9 @@
 
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
+import { toast } from "sonner";
 import { useAuthStore } from "@/stores/auth-store";
-import { getEconomics, getTimeseries } from "@/lib/api";
+import { getEconomics, getErrorMessage, getTimeseries } from "@/lib/api";
 import type { EconomicsResult, TimeseriesResult } from "@/types";
 import TimeseriesChart from "@/components/results/timeseries-chart";
 import EconomicsPanel from "@/components/results/economics-panel";
@@ -42,7 +43,9 @@ export default function ResultsPage() {
           getTimeseries(simId),
         ]);
         if (econResult.status === "fulfilled") setEconomics(econResult.value);
+        else toast.error("Failed to load economics: " + getErrorMessage(econResult.reason));
         if (tsResult.status === "fulfilled") setTimeseries(tsResult.value);
+        else toast.error("Failed to load timeseries: " + getErrorMessage(tsResult.reason));
         setLoading(false);
       };
       fetchData();

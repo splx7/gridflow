@@ -2,8 +2,10 @@
 
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
+import { toast } from "sonner";
 import { useAuthStore } from "@/stores/auth-store";
 import { useProjectStore } from "@/stores/project-store";
+import { getErrorMessage } from "@/lib/api";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -48,13 +50,14 @@ export default function ProjectPage() {
 
   useEffect(() => {
     if (isAuthenticated && projectId) {
+      const onErr = (err: unknown) => toast.error(getErrorMessage(err));
       import("@/lib/api").then(({ getProject }) => {
-        getProject(projectId).then(setCurrentProject);
+        getProject(projectId).then(setCurrentProject).catch(onErr);
       });
-      fetchComponents(projectId);
-      fetchWeather(projectId);
-      fetchLoadProfiles(projectId);
-      fetchSimulations(projectId);
+      fetchComponents(projectId).catch(onErr);
+      fetchWeather(projectId).catch(onErr);
+      fetchLoadProfiles(projectId).catch(onErr);
+      fetchSimulations(projectId).catch(onErr);
     }
   }, [
     isAuthenticated,
