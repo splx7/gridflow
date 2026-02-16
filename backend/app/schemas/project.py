@@ -22,6 +22,7 @@ class ProjectUpdate(BaseModel):
     lifetime_years: int | None = Field(default=None, ge=1, le=50)
     discount_rate: float | None = Field(default=None, ge=0, le=1)
     currency: str | None = Field(default=None, max_length=3)
+    network_mode: str | None = Field(default=None, pattern="^(single_bus|multi_bus)$")
 
 
 class ProjectResponse(BaseModel):
@@ -33,6 +34,7 @@ class ProjectResponse(BaseModel):
     lifetime_years: int
     discount_rate: float
     currency: str
+    network_mode: str
     created_at: datetime
     updated_at: datetime
 

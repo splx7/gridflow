@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { toast } from "sonner";
 import { useProjectStore } from "@/stores/project-store";
 import { getErrorMessage } from "@/lib/api";
@@ -192,9 +192,67 @@ export default function ComponentPanel({
   selectedId,
   onSelect,
 }: ComponentPanelProps) {
-  const { components, addComponent, removeComponent, updateComponent } = useProjectStore();
+  const {
+    components,
+    addComponent,
+    removeComponent,
+    updateComponent,
+    advisorResult,
+    appliedRecommendation,
+    evaluateHealth,
+  } = useProjectStore();
   const [editConfig, setEditConfig] = useState<Record<string, unknown> | null>(null);
   const [saving, setSaving] = useState(false);
+  const debounceRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Build what-if component list (saved components + current edit override)
+  const triggerEvaluate = useCallback(
+    (overrideConfig?: Record<string, unknown> | null) => {
+      if (!advisorResult || !appliedRecommendation) return;
+
+      const whatIfComponents = components.map((c) => {
+        if (c.id === selectedId && overrideConfig) {
+          return { component_type: c.component_type, config: overrideConfig };
+        }
+        return { component_type: c.component_type, config: c.config };
+      });
+
+      evaluateHealth(projectId, {
+        components: whatIfComponents,
+        load_summary: advisorResult.load_summary,
+        solar_resource: advisorResult.solar_resource,
+      }).catch(() => {});
+    },
+    [projectId, components, selectedId, advisorResult, appliedRecommendation, evaluateHealth]
+  );
+
+  // Re-evaluate whenever components list changes (initial load, add, remove, update)
+  const prevComponentsRef = useRef<string>("");
+  useEffect(() => {
+    if (!advisorResult || !appliedRecommendation) return;
+    if (components.length === 0) return;
+
+    // Only re-evaluate if component list actually changed (not just re-render)
+    const fingerprint = components.map(c => `${c.id}:${c.component_type}:${JSON.stringify(c.config)}`).join(",");
+    if (fingerprint === prevComponentsRef.current) return;
+    prevComponentsRef.current = fingerprint;
+
+    triggerEvaluate();
+  }, [components, advisorResult, appliedRecommendation, triggerEvaluate]);
+
+  // Debounced evaluate when editConfig changes
+  useEffect(() => {
+    if (!editConfig || !appliedRecommendation) return;
+
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => {
+      triggerEvaluate(editConfig);
+    }, 300);
+
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+    };
+  }, [editConfig, appliedRecommendation, triggerEvaluate]);
 
   const handleAdd = async (type: ComponentType) => {
     try {

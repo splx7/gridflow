@@ -24,6 +24,9 @@ class Project(Base):
     lifetime_years: Mapped[int] = mapped_column(Integer, default=25)
     discount_rate: Mapped[float] = mapped_column(Float, default=0.08)
     currency: Mapped[str] = mapped_column(String(3), default="USD")
+    network_mode: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="single_bus"
+    )  # single_bus, multi_bus
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
@@ -42,5 +45,14 @@ class Project(Base):
         back_populates="project", cascade="all, delete"
     )
     simulations: Mapped[list["Simulation"]] = relationship(  # noqa: F821
+        back_populates="project", cascade="all, delete"
+    )
+    buses: Mapped[list["Bus"]] = relationship(  # noqa: F821
+        back_populates="project", cascade="all, delete"
+    )
+    branches: Mapped[list["Branch"]] = relationship(  # noqa: F821
+        back_populates="project", cascade="all, delete"
+    )
+    load_allocations: Mapped[list["LoadAllocation"]] = relationship(  # noqa: F821
         back_populates="project", cascade="all, delete"
     )

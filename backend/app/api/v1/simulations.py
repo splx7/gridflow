@@ -99,6 +99,40 @@ async def list_simulations(
     return result.scalars().all()
 
 
+@router.delete(
+    "/projects/{project_id}/simulations/{simulation_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+async def delete_simulation(
+    project_id: uuid.UUID,
+    simulation_id: uuid.UUID,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(
+        select(Simulation)
+        .join(Project)
+        .where(
+            Simulation.id == simulation_id,
+            Simulation.project_id == project_id,
+            Project.user_id == user.id,
+        )
+    )
+    sim = result.scalar_one_or_none()
+    if not sim:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Simulation not found")
+
+    # Delete associated results first
+    result = await db.execute(
+        select(SimulationResult).where(SimulationResult.simulation_id == simulation_id)
+    )
+    for sr in result.scalars().all():
+        await db.delete(sr)
+
+    await db.delete(sim)
+    await db.commit()
+
+
 @router.get("/simulations/{simulation_id}/status", response_model=SimulationStatusResponse)
 async def get_simulation_status(
     simulation_id: uuid.UUID,
@@ -174,4 +208,33 @@ async def get_timeseries(
         "grid_export": _decompress_timeseries(sr.ts_grid_export),
         "excess": _decompress_timeseries(sr.ts_excess),
         "unmet": _decompress_timeseries(sr.ts_unmet),
+    }
+
+
+@router.get("/simulations/{simulation_id}/results/network")
+async def get_network_results(
+    simulation_id: uuid.UUID,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Get network / power flow results for a simulation (multi_bus mode)."""
+    result = await db.execute(
+        select(SimulationResult)
+        .join(Simulation)
+        .join(Project)
+        .where(SimulationResult.simulation_id == simulation_id, Project.user_id == user.id)
+    )
+    sr = result.scalar_one_or_none()
+    if not sr:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Results not found")
+
+    if not sr.power_flow_summary:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No network results — simulation was run in single_bus mode",
+        )
+
+    return {
+        "power_flow_summary": sr.power_flow_summary,
+        "ts_bus_voltages": sr.ts_bus_voltages,
     }

@@ -5,7 +5,10 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
-from app.api.v1 import auth, projects, components, simulations, weather, comparisons
+from app.api.v1 import (
+    auth, projects, components, simulations, weather, comparisons, advisor,
+    buses, branches, load_allocations, power_flow, cable_library,
+)
 from app.models.database import get_engine
 
 
@@ -40,6 +43,14 @@ def create_app() -> FastAPI:
     )
     application.include_router(weather.router, prefix="/api/v1/projects", tags=["weather"])
     application.include_router(comparisons.router, prefix="/api/v1/comparisons", tags=["comparisons"])
+    application.include_router(advisor.router, prefix="/api/v1/projects", tags=["advisor"])
+    application.include_router(buses.router, prefix="/api/v1/projects", tags=["buses"])
+    application.include_router(branches.router, prefix="/api/v1/projects", tags=["branches"])
+    application.include_router(
+        load_allocations.router, prefix="/api/v1/projects", tags=["load-allocations"]
+    )
+    application.include_router(power_flow.router, prefix="/api/v1/projects", tags=["power-flow"])
+    application.include_router(cable_library.router, prefix="/api/v1", tags=["cable-library"])
 
     @application.get("/health")
     async def health_check() -> dict[str, str]:

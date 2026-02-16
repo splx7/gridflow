@@ -28,6 +28,8 @@ import {
   Trash2,
   Zap,
   FolderOpen,
+  LogOut,
+  LogIn,
 } from "lucide-react";
 
 const LocationPicker = dynamic(
@@ -37,8 +39,8 @@ const LocationPicker = dynamic(
 
 export default function DashboardPage() {
   const router = useRouter();
-  const { isAuthenticated, isLoading, checkAuth } = useAuthStore();
-  const { projects, fetchProjects, createProject, deleteProject } =
+  const { user, isAuthenticated, isLoading, checkAuth, logout } = useAuthStore();
+  const { projects, fetchProjects, createProject, deleteProject, fetchPVGIS } =
     useProjectStore();
 
   const [showCreate, setShowCreate] = useState(false);
@@ -72,6 +74,10 @@ export default function DashboardPage() {
       setLatitude(0);
       setLongitude(0);
       toast.success("Project created");
+      // Auto-fetch PVGIS weather data in background
+      fetchPVGIS(project.id).catch(() => {
+        // Silently ignore — project page will retry if needed
+      });
       router.push(`/projects/${project.id}`);
     } catch (err) {
       toast.error(getErrorMessage(err));
@@ -96,6 +102,33 @@ export default function DashboardPage() {
               <Zap className="h-4 w-4 text-white" />
             </div>
             <h1 className="text-xl font-bold gradient-text">GridFlow</h1>
+          </div>
+          <div className="flex items-center gap-3">
+            {user && !user.email.endsWith("@gridflow.local") ? (
+              <>
+                <span className="text-sm text-muted-foreground">{user.email}</span>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    logout();
+                    router.push("/");
+                  }}
+                >
+                  <LogOut className="h-4 w-4 mr-1" />
+                  Log out
+                </Button>
+              </>
+            ) : (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => router.push("/")}
+              >
+                <LogIn className="h-4 w-4 mr-1" />
+                Sign In
+              </Button>
+            )}
           </div>
         </div>
       </header>

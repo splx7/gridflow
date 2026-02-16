@@ -19,6 +19,13 @@ import {
   Factory,
   Wheat,
   Zap,
+  Tent,
+  HeartPulse,
+  GraduationCap,
+  Radio,
+  Store,
+  Droplets,
+  CheckCircle2,
 } from "lucide-react";
 
 interface ScenarioPreset {
@@ -86,6 +93,55 @@ const SCENARIO_PRESETS: ScenarioPreset[] = [
     annual_kwh: 30_000,
     icon: <Wheat className="h-4 w-4" />,
     color: "text-emerald-400",
+  },
+  // Developing-country scenarios
+  {
+    key: "village_microgrid",
+    label: "Village Microgrid",
+    description: "50-100 households + small commerce, evening peak",
+    annual_kwh: 80_000,
+    icon: <Tent className="h-4 w-4" />,
+    color: "text-amber-400",
+  },
+  {
+    key: "health_clinic",
+    label: "Health Clinic",
+    description: "Vaccine refrigeration, lighting, medical equipment 24h",
+    annual_kwh: 15_000,
+    icon: <HeartPulse className="h-4 w-4" />,
+    color: "text-rose-400",
+  },
+  {
+    key: "school_campus",
+    label: "School Campus",
+    description: "Daytime class hours, minimal weekends",
+    annual_kwh: 25_000,
+    icon: <GraduationCap className="h-4 w-4" />,
+    color: "text-indigo-400",
+  },
+  {
+    key: "telecom_tower",
+    label: "Telecom Tower",
+    description: "24/7 near-uniform load, slight daytime increase",
+    annual_kwh: 18_000,
+    icon: <Radio className="h-4 w-4" />,
+    color: "text-cyan-400",
+  },
+  {
+    key: "small_enterprise",
+    label: "Small Enterprise",
+    description: "Workshop / shop, business-hours focused",
+    annual_kwh: 22_000,
+    icon: <Store className="h-4 w-4" />,
+    color: "text-teal-400",
+  },
+  {
+    key: "water_pumping",
+    label: "Water Pumping",
+    description: "Solar-synchronized daytime pumping, strong seasonality",
+    annual_kwh: 35_000,
+    icon: <Droplets className="h-4 w-4" />,
+    color: "text-blue-500",
   },
 ];
 
@@ -185,6 +241,8 @@ export default function DataPanel({ projectId }: DataPanelProps) {
     [projectId]
   );
 
+  const hasWeather = weatherDatasets.length > 0;
+
   return (
     <div className="max-w-4xl mx-auto space-y-8">
       {/* Weather Data */}
@@ -193,9 +251,21 @@ export default function DataPanel({ projectId }: DataPanelProps) {
           <CardTitle className="flex items-center gap-2">
             <CloudSun className="h-5 w-5 text-amber-400" />
             Weather Data
+            {hasWeather && (
+              <Badge variant="success" className="ml-2 text-xs">
+                <CheckCircle2 className="h-3 w-3 mr-1" />
+                Auto-loaded
+              </Badge>
+            )}
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
+          {hasWeather && (
+            <p className="text-xs text-muted-foreground">
+              Weather data was automatically fetched from PVGIS when the project was created.
+              You can add additional datasets below.
+            </p>
+          )}
           <div className="flex gap-3">
             <Button onClick={handleFetchPVGIS} disabled={fetchingPVGIS}>
               {fetchingPVGIS ? (

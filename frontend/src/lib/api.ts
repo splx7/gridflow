@@ -1,14 +1,27 @@
 import axios, { AxiosError, AxiosInstance, InternalAxiosRequestConfig } from "axios";
 import type {
+  AdvisorRequest,
+  AdvisorResponse,
+  Branch,
+  BranchCreate,
+  Bus,
+  BusCreate,
+  CableSpec,
   Component,
   EconomicsResult,
+  LoadAllocation,
+  LoadAllocationCreate,
   LoadProfile,
+  PowerFlowResult,
   Project,
   ProjectCreate,
   Simulation,
   SimulationCreate,
+  SystemEvaluateRequest,
+  SystemHealthResult,
   TimeseriesResult,
   TokenResponse,
+  TransformerSpec,
   User,
   WeatherDataset,
 } from "@/types";
@@ -217,7 +230,7 @@ export async function listLoadProfiles(
 
 export async function generateLoadProfile(
   projectId: string,
-  body: { scenario: string; annual_kwh?: number }
+  body: { scenario?: string; scenarios?: string[]; annual_kwh?: number }
 ): Promise<LoadProfile> {
   const { data } = await api.post(
     `/projects/${projectId}/load-profiles/generate`,
@@ -256,6 +269,13 @@ export async function createSimulation(
   return data;
 }
 
+export async function deleteSimulation(
+  projectId: string,
+  simulationId: string
+): Promise<void> {
+  await api.delete(`/projects/${projectId}/simulations/${simulationId}`);
+}
+
 export async function getSimulationStatus(
   simulationId: string
 ): Promise<{ id: string; status: string; progress: number; error_message: string | null }> {
@@ -278,6 +298,154 @@ export async function getTimeseries(
   const { data } = await api.get(
     `/simulations/${simulationId}/results/timeseries`
   );
+  return data;
+}
+
+// Advisor
+export async function getRecommendations(
+  projectId: string,
+  body: AdvisorRequest
+): Promise<AdvisorResponse> {
+  const { data } = await api.post(
+    `/projects/${projectId}/advisor/recommend`,
+    body
+  );
+  return data;
+}
+
+export async function evaluateSystemHealth(
+  projectId: string,
+  body: SystemEvaluateRequest
+): Promise<SystemHealthResult> {
+  const { data } = await api.post(
+    `/projects/${projectId}/advisor/evaluate`,
+    body
+  );
+  return data;
+}
+
+// Buses
+export async function listBuses(projectId: string): Promise<Bus[]> {
+  const { data } = await api.get(`/projects/${projectId}/buses`);
+  return data;
+}
+
+export async function createBus(
+  projectId: string,
+  body: BusCreate
+): Promise<Bus> {
+  const { data } = await api.post(`/projects/${projectId}/buses`, body);
+  return data;
+}
+
+export async function updateBus(
+  projectId: string,
+  busId: string,
+  body: Partial<BusCreate>
+): Promise<Bus> {
+  const { data } = await api.patch(`/projects/${projectId}/buses/${busId}`, body);
+  return data;
+}
+
+export async function deleteBus(
+  projectId: string,
+  busId: string
+): Promise<void> {
+  await api.delete(`/projects/${projectId}/buses/${busId}`);
+}
+
+// Branches
+export async function listBranches(projectId: string): Promise<Branch[]> {
+  const { data } = await api.get(`/projects/${projectId}/branches`);
+  return data;
+}
+
+export async function createBranch(
+  projectId: string,
+  body: BranchCreate
+): Promise<Branch> {
+  const { data } = await api.post(`/projects/${projectId}/branches`, body);
+  return data;
+}
+
+export async function updateBranch(
+  projectId: string,
+  branchId: string,
+  body: Partial<BranchCreate>
+): Promise<Branch> {
+  const { data } = await api.patch(
+    `/projects/${projectId}/branches/${branchId}`,
+    body
+  );
+  return data;
+}
+
+export async function deleteBranch(
+  projectId: string,
+  branchId: string
+): Promise<void> {
+  await api.delete(`/projects/${projectId}/branches/${branchId}`);
+}
+
+// Load Allocations
+export async function listLoadAllocations(
+  projectId: string
+): Promise<LoadAllocation[]> {
+  const { data } = await api.get(`/projects/${projectId}/load-allocations`);
+  return data;
+}
+
+export async function createLoadAllocation(
+  projectId: string,
+  body: LoadAllocationCreate
+): Promise<LoadAllocation> {
+  const { data } = await api.post(
+    `/projects/${projectId}/load-allocations`,
+    body
+  );
+  return data;
+}
+
+export async function deleteLoadAllocation(
+  projectId: string,
+  allocationId: string
+): Promise<void> {
+  await api.delete(`/projects/${projectId}/load-allocations/${allocationId}`);
+}
+
+// Power Flow
+export async function runPowerFlow(
+  projectId: string,
+  body?: { mode?: string; load_profile_id?: string }
+): Promise<PowerFlowResult> {
+  const { data } = await api.post(
+    `/projects/${projectId}/power-flow`,
+    body || {}
+  );
+  return data;
+}
+
+// Network Results (from simulation)
+export async function getNetworkResults(
+  simulationId: string
+): Promise<{ power_flow_summary: Record<string, unknown>; ts_bus_voltages: Record<string, number[]> }> {
+  const { data } = await api.get(
+    `/simulations/${simulationId}/results/network`
+  );
+  return data;
+}
+
+// Cable & Transformer Libraries
+export async function getCableLibrary(params?: {
+  voltage_class?: string;
+  material?: string;
+}): Promise<CableSpec[]> {
+  const { data } = await api.get("/cable-library", { params });
+  return data;
+}
+
+export async function getTransformerLibrary(): Promise<TransformerSpec[]> {
+  const { data } = await api.get("/transformer-library");
   return data;
 }
 

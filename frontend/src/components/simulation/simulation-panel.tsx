@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { useProjectStore } from "@/stores/project-store";
-import { getErrorMessage } from "@/lib/api";
+import { getErrorMessage, uploadLoadProfile } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -18,28 +18,60 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Play, Loader2, AlertTriangle, BarChart3 } from "lucide-react";
+import {
+  Play,
+  Loader2,
+  BarChart3,
+  Trash2,
+  CheckCircle2,
+  XCircle,
+  Lightbulb,
+  Upload,
+} from "lucide-react";
 import type { DispatchStrategy } from "@/types";
 
 interface SimulationPanelProps {
   projectId: string;
+  onNavigate?: (tab: string) => void;
 }
 
-const DISPATCH_LABELS: Record<DispatchStrategy, string> = {
-  load_following: "Load Following",
-  cycle_charging: "Cycle Charging",
-  combined: "Combined (LF + CC)",
-  optimal: "Optimal (LP)",
+const DISPATCH_INFO: Record<
+  DispatchStrategy,
+  { label: string; desc: string }
+> = {
+  load_following: {
+    label: "Load Following",
+    desc: "PV surplus charges battery. Most common strategy for solar-dominant systems.",
+  },
+  cycle_charging: {
+    label: "Cycle Charging",
+    desc: "Generator/grid actively charges battery. Best for diesel backup systems.",
+  },
+  combined: {
+    label: "Combined (LF + CC)",
+    desc: "Hybrid of both strategies. Switches based on conditions.",
+  },
+  optimal: {
+    label: "Optimal (LP)",
+    desc: "Linear programming for optimal dispatch. Most accurate but slower.",
+  },
 };
 
-export default function SimulationPanel({ projectId }: SimulationPanelProps) {
+export default function SimulationPanel({
+  projectId,
+  onNavigate,
+}: SimulationPanelProps) {
   const router = useRouter();
   const {
     weatherDatasets,
     loadProfiles,
+    components,
     simulations,
     createSimulation,
     fetchSimulations,
+    fetchLoadProfiles,
+    generateLoadProfile,
+    removeSimulation,
   } = useProjectStore();
 
   const [name, setName] = useState("");
@@ -47,6 +79,10 @@ export default function SimulationPanel({ projectId }: SimulationPanelProps) {
   const [weatherId, setWeatherId] = useState("");
   const [loadId, setLoadId] = useState("");
   const [running, setRunning] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [generatingScenario, setGeneratingScenario] = useState<string>("");
+  const [generating, setGenerating] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Auto-select first available dataset/profile
   useEffect(() => {
@@ -98,7 +134,42 @@ export default function SimulationPanel({ projectId }: SimulationPanelProps) {
     }
   };
 
-  const canRun = weatherDatasets.length > 0 && loadProfiles.length > 0;
+  const handleUploadLoad = async (file: File) => {
+    setUploading(true);
+    try {
+      const profile = await uploadLoadProfile(projectId, file);
+      await fetchLoadProfiles(projectId);
+      setLoadId(profile.id);
+      toast.success(
+        `Uploaded "${file.name}" — ${profile.annual_kwh.toLocaleString()} kWh/yr`
+      );
+    } catch (err) {
+      toast.error(getErrorMessage(err));
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const handleQuickGenerate = async () => {
+    if (!generatingScenario) return;
+    setGenerating(true);
+    try {
+      const profile = await generateLoadProfile(projectId, {
+        scenario: generatingScenario,
+      });
+      setLoadId(profile.id);
+      toast.success(`Load profile generated: ${profile.name}`);
+    } catch (err) {
+      toast.error(getErrorMessage(err));
+    } finally {
+      setGenerating(false);
+    }
+  };
+
+  const hasWeather = weatherDatasets.length > 0;
+  const hasLoad = loadProfiles.length > 0;
+  const hasComponents = components.length > 0;
+  const canRun = hasWeather && hasLoad && hasComponents;
 
   const statusBadge = (status: string) => {
     switch (status) {
@@ -115,6 +186,123 @@ export default function SimulationPanel({ projectId }: SimulationPanelProps) {
 
   return (
     <div className="max-w-4xl mx-auto space-y-8">
+      {/* Prerequisites Checklist */}
+      <Card variant="glass">
+        <CardHeader className="pb-3">
+          <CardTitle className="text-sm font-medium">
+            Ready to Simulate?
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-2">
+          <div className="flex items-center gap-2">
+            {hasWeather ? (
+              <CheckCircle2 className="h-4 w-4 text-emerald-400 shrink-0" />
+            ) : (
+              <XCircle className="h-4 w-4 text-destructive shrink-0" />
+            )}
+            <span className="text-sm">
+              Weather data{" "}
+              {hasWeather ? (
+                <span className="text-muted-foreground">
+                  ({weatherDatasets[0].name})
+                </span>
+              ) : (
+                <span className="text-muted-foreground">
+                  — auto-fetched from PVGIS
+                </span>
+              )}
+            </span>
+          </div>
+
+          <div className="flex items-start gap-2">
+            {hasLoad ? (
+              <CheckCircle2 className="h-4 w-4 text-emerald-400 shrink-0 mt-0.5" />
+            ) : (
+              <XCircle className="h-4 w-4 text-destructive shrink-0 mt-0.5" />
+            )}
+            <div className="space-y-2">
+              <span className="text-sm">
+                Load profile{" "}
+                {hasLoad ? (
+                  <span className="text-muted-foreground">
+                    ({loadProfiles[0].name})
+                  </span>
+                ) : (
+                  <span className="text-muted-foreground">— not generated yet</span>
+                )}
+              </span>
+              {!hasLoad && (
+                <div className="flex items-center gap-2">
+                  <Select
+                    value={generatingScenario}
+                    onValueChange={setGeneratingScenario}
+                  >
+                    <SelectTrigger className="h-8 w-48 text-xs">
+                      <SelectValue placeholder="Select scenario..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="village_microgrid">Village Microgrid</SelectItem>
+                      <SelectItem value="health_clinic">Health Clinic</SelectItem>
+                      <SelectItem value="school_campus">School Campus</SelectItem>
+                      <SelectItem value="commercial_office">Commercial Office</SelectItem>
+                      <SelectItem value="residential_small">Residential (Small)</SelectItem>
+                      <SelectItem value="residential_large">Residential (Large)</SelectItem>
+                      <SelectItem value="industrial_light">Industrial (Light)</SelectItem>
+                      <SelectItem value="agricultural">Agricultural</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <Button
+                    size="sm"
+                    className="h-8 text-xs"
+                    disabled={!generatingScenario || generating}
+                    onClick={handleQuickGenerate}
+                  >
+                    {generating ? (
+                      <Loader2 className="h-3 w-3 animate-spin mr-1" />
+                    ) : null}
+                    Generate
+                  </Button>
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            {hasComponents ? (
+              <CheckCircle2 className="h-4 w-4 text-emerald-400 shrink-0" />
+            ) : (
+              <XCircle className="h-4 w-4 text-destructive shrink-0" />
+            )}
+            <span className="text-sm">
+              System components{" "}
+              {hasComponents ? (
+                <span className="text-muted-foreground">
+                  ({components.length} configured)
+                </span>
+              ) : onNavigate ? (
+                <Button
+                  variant="link"
+                  className="h-auto p-0 text-sm"
+                  onClick={() => onNavigate("advisor")}
+                >
+                  Go to Advisor
+                </Button>
+              ) : (
+                <span className="text-muted-foreground">
+                  — use Advisor first
+                </span>
+              )}
+            </span>
+          </div>
+
+          {canRun && (
+            <p className="text-xs text-emerald-400 font-medium pt-1">
+              All prerequisites met!
+            </p>
+          )}
+        </CardContent>
+      </Card>
+
       {/* New Simulation */}
       <Card variant="glass">
         <CardHeader>
@@ -126,10 +314,12 @@ export default function SimulationPanel({ projectId }: SimulationPanelProps) {
         <CardContent>
           {!canRun ? (
             <div className="flex items-center gap-3 p-4 rounded-xl bg-amber-500/10 border border-amber-500/20">
-              <AlertTriangle className="h-5 w-5 text-amber-400 shrink-0" />
+              <Lightbulb className="h-5 w-5 text-amber-400 shrink-0" />
               <p className="text-sm text-amber-300">
-                Upload weather data and a load profile before running
-                simulations.
+                Complete the prerequisites above before running simulations.
+                {!hasComponents &&
+                  onNavigate &&
+                  " Start with the Advisor to get a recommended system."}
               </p>
             </div>
           ) : (
@@ -143,28 +333,32 @@ export default function SimulationPanel({ projectId }: SimulationPanelProps) {
                 />
               </div>
 
-              <div className="grid grid-cols-3 gap-4">
-                <div>
-                  <Label>Dispatch Strategy</Label>
-                  <Select
-                    value={strategy}
-                    onValueChange={(v) => setStrategy(v as DispatchStrategy)}
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {(
-                        Object.keys(DISPATCH_LABELS) as DispatchStrategy[]
-                      ).map((s) => (
-                        <SelectItem key={s} value={s}>
-                          {DISPATCH_LABELS[s]}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
+              {/* Dispatch Strategy with description */}
+              <div>
+                <Label>Dispatch Strategy</Label>
+                <Select
+                  value={strategy}
+                  onValueChange={(v) => setStrategy(v as DispatchStrategy)}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {(
+                      Object.keys(DISPATCH_INFO) as DispatchStrategy[]
+                    ).map((s) => (
+                      <SelectItem key={s} value={s}>
+                        {DISPATCH_INFO[s].label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground mt-1">
+                  {DISPATCH_INFO[strategy].desc}
+                </p>
+              </div>
 
+              <div className="grid grid-cols-2 gap-4">
                 <div>
                   <Label>Weather Dataset</Label>
                   <Select value={weatherId} onValueChange={setWeatherId}>
@@ -182,7 +376,30 @@ export default function SimulationPanel({ projectId }: SimulationPanelProps) {
                 </div>
 
                 <div>
-                  <Label>Load Profile</Label>
+                  <div className="flex items-center justify-between">
+                    <Label>Load Profile</Label>
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept=".csv"
+                      className="hidden"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) handleUploadLoad(file);
+                        e.target.value = "";
+                      }}
+                    />
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-auto py-0 px-1 text-xs text-muted-foreground"
+                      onClick={() => fileInputRef.current?.click()}
+                      disabled={uploading}
+                    >
+                      <Upload className="h-3 w-3 mr-1" />
+                      {uploading ? "Uploading..." : "Upload CSV"}
+                    </Button>
+                  </div>
                   <Select value={loadId} onValueChange={setLoadId}>
                     <SelectTrigger>
                       <SelectValue />
@@ -240,7 +457,7 @@ export default function SimulationPanel({ projectId }: SimulationPanelProps) {
                           {sim.name}
                         </span>
                         <Badge variant="secondary">
-                          {DISPATCH_LABELS[sim.dispatch_strategy] ||
+                          {DISPATCH_INFO[sim.dispatch_strategy]?.label ||
                             sim.dispatch_strategy}
                         </Badge>
                       </div>
@@ -267,6 +484,22 @@ export default function SimulationPanel({ projectId }: SimulationPanelProps) {
                           </span>
                         )}
                         {statusBadge(sim.status)}
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="text-muted-foreground hover:text-destructive"
+                          onClick={() => {
+                            if (confirm("Delete this simulation?")) {
+                              removeSimulation(projectId, sim.id)
+                                .then(() => toast.success("Simulation deleted"))
+                                .catch((err) =>
+                                  toast.error(getErrorMessage(err))
+                                );
+                            }
+                          }}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
                       </div>
                     </div>
 

@@ -8,6 +8,8 @@ export interface User {
   created_at: string;
 }
 
+export type NetworkMode = "single_bus" | "multi_bus";
+
 export interface Project {
   id: string;
   name: string;
@@ -17,6 +19,7 @@ export interface Project {
   lifetime_years: number;
   discount_rate: number;
   currency: string;
+  network_mode: NetworkMode;
   created_at: string;
   updated_at: string;
 }
@@ -29,6 +32,8 @@ export interface ProjectCreate {
   lifetime_years?: number;
   discount_rate?: number;
   currency?: string;
+  network_mode?: NetworkMode;
+  [key: string]: unknown;
 }
 
 export type ComponentType =
@@ -44,6 +49,7 @@ export interface Component {
   component_type: ComponentType;
   name: string;
   config: Record<string, unknown>;
+  bus_id: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -196,4 +202,222 @@ export interface TokenResponse {
   access_token: string;
   refresh_token: string;
   token_type: string;
+}
+
+// Advisor types
+export interface GoalWeights {
+  cost: number;
+  renewables: number;
+  reliability: number;
+  roi: number;
+}
+
+export interface AdvisorRequest {
+  load_profile_id?: string | null;
+  scenario?: string | null;
+  annual_kwh?: number | null;
+  peak_kw?: number | null;
+  daytime_fraction?: number | null;
+  goals: GoalWeights;
+  grid_available: boolean;
+  budget_ceiling?: number | null;
+}
+
+export interface AdvisorComponentSpec {
+  component_type: ComponentType;
+  name: string;
+  config: Record<string, unknown>;
+}
+
+export interface AdvisorEstimates {
+  estimated_npc: number;
+  estimated_lcoe: number;
+  estimated_renewable_fraction: number;
+  estimated_payback_years: number | null;
+  estimated_capital_cost: number;
+  estimated_co2_reduction_pct: number;
+}
+
+export interface AdvisorGoalScores {
+  cost: number;
+  renewables: number;
+  reliability: number;
+  roi: number;
+}
+
+export interface AdvisorRecommendation {
+  name: string;
+  description: string;
+  best_for: string;
+  components: AdvisorComponentSpec[];
+  estimates: AdvisorEstimates;
+  goal_scores: AdvisorGoalScores;
+}
+
+export interface AdvisorResponse {
+  recommendations: AdvisorRecommendation[];
+  load_summary: { annual_kwh: number; peak_kw: number; daytime_fraction: number };
+  solar_resource: { peak_sun_hours: number; estimated_cf: number };
+}
+
+// System Health types
+export interface SystemWarning {
+  level: "critical" | "warning" | "info";
+  code: string;
+  message: string;
+  detail: string;
+}
+
+export interface SystemEvaluateRequest {
+  components: { component_type: string; config: Record<string, unknown> }[];
+  load_summary: { annual_kwh: number; peak_kw: number; daytime_fraction: number };
+  solar_resource: { peak_sun_hours: number; estimated_cf: number };
+}
+
+export interface SystemHealthResult {
+  estimates: AdvisorEstimates;
+  warnings: SystemWarning[];
+}
+
+// Network topology types
+export type BusType = "slack" | "pv" | "pq";
+
+export interface Bus {
+  id: string;
+  project_id: string;
+  name: string;
+  bus_type: BusType;
+  nominal_voltage_kv: number;
+  base_mva: number;
+  x_position: number | null;
+  y_position: number | null;
+  config: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface BusCreate {
+  name: string;
+  bus_type?: BusType;
+  nominal_voltage_kv?: number;
+  base_mva?: number;
+  x_position?: number | null;
+  y_position?: number | null;
+  config?: Record<string, unknown>;
+}
+
+export type BranchType = "cable" | "line" | "transformer";
+
+export interface Branch {
+  id: string;
+  project_id: string;
+  from_bus_id: string;
+  to_bus_id: string;
+  branch_type: BranchType;
+  name: string;
+  config: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface BranchCreate {
+  from_bus_id: string;
+  to_bus_id: string;
+  branch_type: BranchType;
+  name: string;
+  config?: Record<string, unknown>;
+}
+
+export interface LoadAllocation {
+  id: string;
+  project_id: string;
+  load_profile_id: string;
+  bus_id: string;
+  name: string;
+  fraction: number;
+  power_factor: number;
+  created_at: string;
+}
+
+export interface LoadAllocationCreate {
+  load_profile_id: string;
+  bus_id: string;
+  name: string;
+  fraction?: number;
+  power_factor?: number;
+}
+
+export interface CableSpec {
+  name: string;
+  size_mm2: number;
+  cores: number;
+  material: string;
+  voltage_class: string;
+  insulation: string;
+  r_ohm_per_km: number;
+  x_ohm_per_km: number;
+  ampacity_a: number;
+  max_voltage_kv: number;
+}
+
+export interface TransformerSpec {
+  name: string;
+  rating_kva: number;
+  hv_kv: number;
+  lv_kv: number;
+  impedance_pct: number;
+  x_r_ratio: number;
+  vector_group: string;
+  no_load_loss_kw: number;
+  load_loss_kw: number;
+}
+
+// Power flow result types
+export interface BranchFlowSummary {
+  from_kw: number;
+  to_kw: number;
+  loss_kw: number;
+  vd_pct: number;
+  loading_pct: number;
+}
+
+export interface VoltageViolation {
+  bus_id: string;
+  bus_name: string;
+  hour: number | null;
+  voltage_pu: number;
+  limit: "low" | "high";
+}
+
+export interface ThermalViolation {
+  branch_id: string;
+  branch_name: string;
+  hour: number | null;
+  loading_pct: number;
+  rating_mva: number;
+}
+
+export interface ShortCircuitBus {
+  i_sc_ka: number;
+  s_sc_mva: number;
+}
+
+export interface PowerFlowSummary {
+  min_voltage_pu: number;
+  max_voltage_pu: number;
+  worst_voltage_bus: string;
+  max_branch_loading_pct: number;
+  total_losses_pct: number;
+  total_losses_kw: number;
+}
+
+export interface PowerFlowResult {
+  converged: boolean;
+  iterations: number;
+  bus_voltages: Record<string, number>;
+  branch_flows: Record<string, BranchFlowSummary>;
+  voltage_violations: VoltageViolation[];
+  thermal_violations: ThermalViolation[];
+  short_circuit: Record<string, ShortCircuitBus>;
+  summary: PowerFlowSummary;
 }

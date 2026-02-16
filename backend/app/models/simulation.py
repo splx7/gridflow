@@ -72,4 +72,8 @@ class SimulationResult(Base):
     ts_excess: Mapped[bytes | None] = mapped_column(LargeBinary)
     ts_unmet: Mapped[bytes | None] = mapped_column(LargeBinary)
 
+    # Network / power flow results (multi_bus mode)
+    power_flow_summary: Mapped[dict | None] = mapped_column(JSONB)
+    ts_bus_voltages: Mapped[dict | None] = mapped_column(JSONB)
+
     simulation: Mapped["Simulation"] = relationship(back_populates="results")

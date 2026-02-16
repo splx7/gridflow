@@ -35,11 +35,16 @@ class LoadProfileCreate(BaseModel):
 
 
 class GenerateLoadProfileRequest(BaseModel):
-    scenario: str = Field(
-        description="One of: residential_small, residential_large, commercial_office, "
-        "commercial_retail, industrial_light, industrial_heavy, agricultural"
+    scenario: str | None = Field(
+        default=None,
+        description="Single scenario key. Required if 'scenarios' is not provided.",
+    )
+    scenarios: list[str] | None = Field(
+        default=None,
+        description="Multiple scenario keys for composite load profile. "
+        "If provided, profiles are combined with annual_kwh weighting.",
     )
     annual_kwh: float | None = Field(
         default=None,
-        description="Override annual energy consumption in kWh. If omitted, uses scenario default.",
+        description="Override annual energy consumption in kWh. If omitted, uses scenario default(s).",
     )

@@ -6,3 +6,6 @@ from app.models.component import Component  # noqa: F401
 from app.models.weather import WeatherDataset  # noqa: F401
 from app.models.load_profile import LoadProfile  # noqa: F401
 from app.models.simulation import Simulation, SimulationResult  # noqa: F401
+from app.models.bus import Bus  # noqa: F401
+from app.models.branch import Branch  # noqa: F401
+from app.models.load_allocation import LoadAllocation  # noqa: F401

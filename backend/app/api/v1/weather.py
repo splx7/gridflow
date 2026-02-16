@@ -221,6 +221,91 @@ _SCENARIO_DEFAULTS: dict[str, dict] = {
         "seasonal_amp": 0.35,
         "peak_season": "summer",
     },
+    # ── Developing-country scenarios ──────────────────────────────
+    "village_microgrid": {
+        "name": "Village Microgrid",
+        "profile_type": "village",
+        "annual_kwh": 80_000,
+        "hourly_shape": [
+            0.2, 0.15, 0.15, 0.15, 0.15, 0.2,
+            0.35, 0.5, 0.55, 0.5, 0.45, 0.4,
+            0.4, 0.45, 0.45, 0.5, 0.6, 0.75,
+            1.0, 0.95, 0.85, 0.65, 0.4, 0.25,
+        ],
+        "weekend_factor": 1.1,
+        "seasonal_amp": 0.1,
+        "peak_season": "summer",
+    },
+    "health_clinic": {
+        "name": "Health Clinic",
+        "profile_type": "health",
+        "annual_kwh": 15_000,
+        "hourly_shape": [
+            0.4, 0.4, 0.4, 0.4, 0.4, 0.45,
+            0.6, 0.8, 0.9, 1.0, 1.0, 0.95,
+            0.85, 0.9, 0.95, 0.9, 0.8, 0.65,
+            0.5, 0.45, 0.4, 0.4, 0.4, 0.4,
+        ],
+        "weekend_factor": 0.7,
+        "seasonal_amp": 0.1,
+        "peak_season": "summer",
+    },
+    "school_campus": {
+        "name": "School Campus",
+        "profile_type": "school",
+        "annual_kwh": 25_000,
+        "hourly_shape": [
+            0.1, 0.1, 0.1, 0.1, 0.1, 0.15,
+            0.3, 0.6, 0.9, 1.0, 1.0, 0.95,
+            0.8, 0.95, 1.0, 0.9, 0.7, 0.4,
+            0.2, 0.15, 0.1, 0.1, 0.1, 0.1,
+        ],
+        "weekend_factor": 0.2,
+        "seasonal_amp": 0.25,
+        "peak_season": "winter",
+    },
+    "telecom_tower": {
+        "name": "Telecom Tower",
+        "profile_type": "telecom",
+        "annual_kwh": 18_000,
+        "hourly_shape": [
+            0.9, 0.88, 0.87, 0.87, 0.88, 0.9,
+            0.92, 0.95, 0.98, 1.0, 1.0, 1.0,
+            1.0, 1.0, 1.0, 0.98, 0.97, 0.95,
+            0.95, 0.93, 0.92, 0.91, 0.9, 0.9,
+        ],
+        "weekend_factor": 1.0,
+        "seasonal_amp": 0.03,
+        "peak_season": "summer",
+    },
+    "small_enterprise": {
+        "name": "Small Enterprise",
+        "profile_type": "commercial",
+        "annual_kwh": 22_000,
+        "hourly_shape": [
+            0.1, 0.1, 0.1, 0.1, 0.1, 0.15,
+            0.3, 0.6, 0.85, 0.95, 1.0, 1.0,
+            0.9, 0.95, 1.0, 0.95, 0.85, 0.7,
+            0.5, 0.3, 0.15, 0.1, 0.1, 0.1,
+        ],
+        "weekend_factor": 0.5,
+        "seasonal_amp": 0.1,
+        "peak_season": "summer",
+    },
+    "water_pumping": {
+        "name": "Water Pumping",
+        "profile_type": "agricultural",
+        "annual_kwh": 35_000,
+        "hourly_shape": [
+            0.0, 0.0, 0.0, 0.0, 0.0, 0.05,
+            0.3, 0.7, 0.9, 1.0, 1.0, 1.0,
+            1.0, 1.0, 0.95, 0.85, 0.6, 0.3,
+            0.05, 0.0, 0.0, 0.0, 0.0, 0.0,
+        ],
+        "weekend_factor": 0.8,
+        "seasonal_amp": 0.4,
+        "peak_season": "summer",
+    },
 }
 
 
@@ -271,12 +356,69 @@ async def generate_load_profile(
 ):
     await _get_user_project(project_id, user, db)
 
-    scenario_cfg = _SCENARIO_DEFAULTS.get(body.scenario)
+    # Composite scenario (multiple keys)
+    if body.scenarios and len(body.scenarios) > 1:
+        valid_keys = set(_SCENARIO_DEFAULTS.keys())
+        invalid = [k for k in body.scenarios if k not in valid_keys]
+        if invalid:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Unknown scenario(s): {', '.join(invalid)}. Valid: {', '.join(valid_keys)}",
+            )
+
+        # Combine hourly shapes weighted by annual_kwh
+        combined_shape = np.zeros(24)
+        total_kwh = 0.0
+        total_weekend = 0.0
+        total_seasonal = 0.0
+        for key in body.scenarios:
+            cfg = _SCENARIO_DEFAULTS[key]
+            shape = np.array(cfg["hourly_shape"])
+            weight = cfg["annual_kwh"]
+            combined_shape += shape * weight
+            total_weekend += cfg["weekend_factor"] * weight
+            total_seasonal += cfg["seasonal_amp"] * weight
+            total_kwh += weight
+        combined_shape /= total_kwh
+
+        composite_cfg = {
+            "hourly_shape": combined_shape.tolist(),
+            "weekend_factor": total_weekend / total_kwh,
+            "seasonal_amp": total_seasonal / total_kwh,
+            "peak_season": "summer",
+        }
+        annual_kwh = body.annual_kwh if body.annual_kwh is not None else total_kwh
+        arr = _generate_synthetic_profile(composite_cfg, annual_kwh)
+
+        names = [_SCENARIO_DEFAULTS[k]["name"] for k in body.scenarios]
+        profile_name = " + ".join(names)
+
+        profile = LoadProfile(
+            project_id=project_id,
+            name=profile_name,
+            profile_type="composite",
+            annual_kwh=float(arr.sum()),
+            hourly_kw=_compress_array(arr),
+        )
+        db.add(profile)
+        await db.commit()
+        await db.refresh(profile)
+        return profile
+
+    # Single scenario
+    scenario_key = body.scenario or (body.scenarios[0] if body.scenarios else None)
+    if not scenario_key:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Provide either 'scenario' or 'scenarios'",
+        )
+
+    scenario_cfg = _SCENARIO_DEFAULTS.get(scenario_key)
     if not scenario_cfg:
         valid = ", ".join(_SCENARIO_DEFAULTS.keys())
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Unknown scenario '{body.scenario}'. Valid: {valid}",
+            detail=f"Unknown scenario '{scenario_key}'. Valid: {valid}",
         )
 
     annual_kwh = body.annual_kwh if body.annual_kwh is not None else scenario_cfg["annual_kwh"]

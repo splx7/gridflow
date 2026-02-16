@@ -9,7 +9,10 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.worker import celery_app
-from app.models import Simulation, SimulationResult, Component, WeatherDataset, LoadProfile
+from app.models import (
+    Simulation, SimulationResult, Component, WeatherDataset, LoadProfile,
+    Bus, Branch, LoadAllocation, Project,
+)
 
 sync_engine = create_engine(settings.sync_database_url)
 
@@ -123,6 +126,85 @@ def run_simulation(self, simulation_id: str) -> dict:
                 if "battery_charge_kw" in results else None
             )
 
+            # Network power flow (multi_bus mode)
+            power_flow_summary = None
+            ts_bus_voltages = None
+            if project.network_mode == "multi_bus":
+                try:
+                    sim.progress = 85.0
+                    db.commit()
+
+                    db_buses = db.execute(
+                        select(Bus).where(Bus.project_id == sim.project_id)
+                    ).scalars().all()
+                    db_branches = db.execute(
+                        select(Branch).where(Branch.project_id == sim.project_id)
+                    ).scalars().all()
+                    db_allocations = db.execute(
+                        select(LoadAllocation).where(
+                            LoadAllocation.project_id == sim.project_id
+                        )
+                    ).scalars().all()
+
+                    if db_buses:
+                        # Build bus index map
+                        bus_uuid_to_idx = {bus.id: i for i, bus in enumerate(db_buses)}
+                        buses_cfg = [
+                            {
+                                "name": bus.name,
+                                "bus_type": bus.bus_type,
+                                "nominal_voltage_kv": bus.nominal_voltage_kv,
+                                "config": bus.config or {},
+                            }
+                            for bus in db_buses
+                        ]
+                        branches_cfg = [
+                            {
+                                "name": br.name,
+                                "branch_type": br.branch_type,
+                                "from_bus_idx": bus_uuid_to_idx.get(br.from_bus_id, 0),
+                                "to_bus_idx": bus_uuid_to_idx.get(br.to_bus_id, 0),
+                                "config": br.config or {},
+                            }
+                            for br in db_branches
+                            if br.from_bus_id in bus_uuid_to_idx
+                            and br.to_bus_id in bus_uuid_to_idx
+                        ]
+
+                        # Component → bus mapping
+                        comp_bus_map = {}
+                        for comp in components:
+                            if comp.bus_id and comp.bus_id in bus_uuid_to_idx:
+                                comp_bus_map[comp.component_type] = bus_uuid_to_idx[comp.bus_id]
+
+                        # Load allocations
+                        load_allocs = []
+                        for alloc in db_allocations:
+                            if alloc.bus_id in bus_uuid_to_idx:
+                                load_allocs.append({
+                                    "bus_idx": bus_uuid_to_idx[alloc.bus_id],
+                                    "fraction": alloc.fraction,
+                                    "power_factor": alloc.power_factor,
+                                })
+
+                        from engine.network.network_runner import run_network_simulation
+
+                        network_results = run_network_simulation(
+                            dispatch_results=results,
+                            buses_config=buses_cfg,
+                            branches_config=branches_cfg,
+                            component_bus_map=comp_bus_map,
+                            load_allocations=load_allocs,
+                            load_kw=load_kw,
+                            mode="snapshot",
+                            s_base_mva=1.0,
+                        )
+                        power_flow_summary = network_results["power_flow_summary"]
+                        ts_bus_voltages = network_results["ts_bus_voltages"]
+                except Exception:
+                    import traceback as tb
+                    tb.print_exc()
+
             # Flatten cost_breakdown for frontend display
             raw_bd = econ["cost_breakdown"]
             flat_breakdown = {}
@@ -157,6 +239,8 @@ def run_simulation(self, simulation_id: str) -> dict:
                 ts_grid_export=_compress(results["grid_export_kw"]) if results.get("grid_export_kw") is not None else None,
                 ts_excess=_compress(results["curtailed_kw"]) if results.get("curtailed_kw") is not None else None,
                 ts_unmet=_compress(results["unmet_load_kw"]) if results.get("unmet_load_kw") is not None else None,
+                power_flow_summary=power_flow_summary,
+                ts_bus_voltages=ts_bus_voltages,
             )
             db.add(sim_result)
 
