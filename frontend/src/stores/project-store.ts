@@ -46,6 +46,7 @@ interface ProjectState {
   powerFlowLoading: boolean;
   networkRecommendations: NetworkRecommendation[];
   autoGenerateLoading: boolean;
+  networkGeneratedComponentIds: string[];
 
   // Projects
   fetchProjects: () => Promise<void>;
@@ -121,6 +122,7 @@ interface ProjectState {
   clearPowerFlow: () => void;
   autoGenerateNetwork: (projectId: string, body?: AutoGenerateRequest) => Promise<AutoGenerateResponse>;
   clearNetworkRecommendations: () => void;
+  setNetworkGeneratedComponentIds: (ids: string[]) => void;
 }
 
 export const useProjectStore = create<ProjectState>((set, get) => ({
@@ -142,6 +144,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   powerFlowLoading: false,
   networkRecommendations: [],
   autoGenerateLoading: false,
+  networkGeneratedComponentIds: [],
 
   fetchProjects: async () => {
     set({ isLoading: true });
@@ -361,12 +364,14 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     set({ autoGenerateLoading: true });
     try {
       const result = await api.autoGenerateNetwork(projectId, body);
+      const generatedComponentIds = get().components.map(c => c.id);
       set({
         buses: result.buses,
         branches: result.branches,
         loadAllocations: result.load_allocations,
         networkRecommendations: result.recommendations,
         autoGenerateLoading: false,
+        networkGeneratedComponentIds: generatedComponentIds,
       });
       // Refresh project (network_mode changed) and components (bus_id updated)
       const [project, components] = await Promise.all([
@@ -386,4 +391,5 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   },
 
   clearNetworkRecommendations: () => set({ networkRecommendations: [] }),
+  setNetworkGeneratedComponentIds: (ids) => set({ networkGeneratedComponentIds: ids }),
 }));

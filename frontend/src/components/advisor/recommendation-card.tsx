@@ -4,7 +4,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import type { AdvisorRecommendation, GoalWeights } from "@/types";
-import { Sun, Battery, Fuel, Plug, Check } from "lucide-react";
+import { Sun, Battery, Fuel, Plug, Check, Zap } from "lucide-react";
 
 function componentIcon(type: string) {
   switch (type) {
@@ -14,6 +14,8 @@ function componentIcon(type: string) {
       return <Battery className="h-3.5 w-3.5 text-blue-400" />;
     case "diesel_generator":
       return <Fuel className="h-3.5 w-3.5 text-orange-400" />;
+    case "inverter":
+      return <Zap className="h-3.5 w-3.5 text-cyan-400" />;
     case "grid_connection":
       return <Plug className="h-3.5 w-3.5 text-green-400" />;
     default:
@@ -29,6 +31,8 @@ function componentSummary(type: string, config: Record<string, unknown>) {
       return `${config.capacity_kwh} kWh`;
     case "diesel_generator":
       return `${config.rated_power_kw} kW`;
+    case "inverter":
+      return `${config.rated_power_kw} kW ${config.mode === "grid_forming" ? "(GFM)" : "(GFL)"}`;
     case "grid_connection":
       return "Connected";
     default:

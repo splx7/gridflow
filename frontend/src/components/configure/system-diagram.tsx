@@ -23,6 +23,7 @@ const COMPONENT_ICONS: Record<ComponentType, string> = {
   wind_turbine: "Wind",
   battery: "Batt",
   diesel_generator: "Gen",
+  inverter: "Inv",
   grid_connection: "Grid",
 };
 
@@ -31,6 +32,7 @@ const COMPONENT_COLORS: Record<ComponentType, string> = {
   wind_turbine: "#3b82f6",
   battery: "#10b981",
   diesel_generator: "#ef4444",
+  inverter: "#06b6d4",
   grid_connection: "#8b5cf6",
 };
 
@@ -73,6 +75,7 @@ const LAYOUT_POSITIONS: Record<ComponentType, { x: number; y: number }> = {
   wind_turbine: { x: 50, y: 220 },
   battery: { x: 350, y: 300 },
   diesel_generator: { x: 50, y: 390 },
+  inverter: { x: 350, y: 130 },
   grid_connection: { x: 600, y: 50 },
 };
 

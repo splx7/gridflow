@@ -13,8 +13,10 @@ class SolarPVConfig(BaseModel):
     azimuth_deg: float = Field(ge=0, le=360)
     module_type: str = "mono-si"
     inverter_efficiency: float = Field(default=0.96, ge=0, le=1)
+    inverter_capacity_kw: float | None = Field(default=None, ge=0)  # None = same as capacity_kwp
+    inverter_cost_per_kw: float = Field(default=150, ge=0)
     system_losses: float = Field(default=0.14, ge=0, le=1)
-    capital_cost_per_kw: float = Field(default=1000, ge=0)
+    capital_cost_per_kw: float = Field(default=1000, ge=0)  # Panel + BOS (excl. inverter)
     om_cost_per_kw_year: float = Field(default=15, ge=0)
     lifetime_years: int = Field(default=25, ge=1)
     derating_factor: float = Field(default=0.005, ge=0, le=0.05)
@@ -41,12 +43,14 @@ class BatteryConfig(BaseModel):
     max_charge_rate_kw: float = Field(gt=0)
     max_discharge_rate_kw: float = Field(gt=0)
     round_trip_efficiency: float = Field(default=0.90, ge=0, le=1)
+    inverter_capacity_kw: float | None = Field(default=None, ge=0)  # None = max(charge, discharge)
+    inverter_cost_per_kw: float = Field(default=150, ge=0)
     min_soc: float = Field(default=0.20, ge=0, le=1)
     max_soc: float = Field(default=1.0, ge=0, le=1)
     initial_soc: float = Field(default=0.50, ge=0, le=1)
     chemistry: str = "nmc"
     cycle_life: int = Field(default=5000, ge=100)
-    capital_cost_per_kwh: float = Field(default=300, ge=0)
+    capital_cost_per_kwh: float = Field(default=300, ge=0)  # Battery cells only (excl. inverter)
     replacement_cost_per_kwh: float = Field(default=200, ge=0)
     om_cost_per_kwh_year: float = Field(default=5, ge=0)
     lifetime_years: int = Field(default=10, ge=1)
@@ -65,6 +69,18 @@ class DieselGeneratorConfig(BaseModel):
     start_cost: float = Field(default=5.0, ge=0)
 
 
+class InverterConfig(BaseModel):
+    type: Literal["inverter"] = "inverter"
+    rated_power_kw: float = Field(gt=0)
+    efficiency: float = Field(default=0.96, ge=0, le=1)
+    mode: str = "grid_following"  # grid_following | grid_forming
+    bidirectional: bool = True
+    reactive_power_capability_pct: float = Field(default=0.0, ge=0, le=100)  # % of rated for Q support
+    capital_cost_per_kw: float = Field(default=150, ge=0)
+    om_cost_per_kw_year: float = Field(default=5, ge=0)
+    lifetime_years: int = Field(default=15, ge=1)
+
+
 class GridConnectionConfig(BaseModel):
     type: Literal["grid_connection"] = "grid_connection"
     max_import_kw: float = Field(default=1e6, ge=0)
@@ -77,7 +93,7 @@ class GridConnectionConfig(BaseModel):
     tou_schedule: dict | None = None  # {period_name: {rate, hours: [0-23], months: [1-12]}}
 
 
-ComponentConfig = SolarPVConfig | WindTurbineConfig | BatteryConfig | DieselGeneratorConfig | GridConnectionConfig
+ComponentConfig = SolarPVConfig | WindTurbineConfig | BatteryConfig | DieselGeneratorConfig | InverterConfig | GridConnectionConfig
 
 
 class ComponentCreate(BaseModel):

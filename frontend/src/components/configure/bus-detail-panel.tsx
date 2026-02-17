@@ -17,13 +17,14 @@ import {
 import { useProjectStore } from "@/stores/project-store";
 import { getErrorMessage } from "@/lib/api";
 import type { Bus, Branch, Component as GridComponent, PowerFlowResult } from "@/types";
-import { Trash2, X, Sun, Wind, Battery, Fuel, Plug } from "lucide-react";
+import { Trash2, X, Sun, Wind, Battery, Fuel, Plug, Zap } from "lucide-react";
 
 const COMPONENT_ICONS: Record<string, typeof Sun> = {
   solar_pv: Sun,
   wind_turbine: Wind,
   battery: Battery,
   diesel_generator: Fuel,
+  inverter: Zap,
   grid_connection: Plug,
 };
 

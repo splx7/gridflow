@@ -77,6 +77,19 @@ def _capital_costs(components: dict[str, dict]) -> dict[str, float]:
         else:
             costs[comp_type] = 0.0
 
+        # Add inverter cost (separate from panel/battery cell cost)
+        inv_cost_per_kw = float(cfg.get("inverter_cost_per_kw", 0))
+        if inv_cost_per_kw > 0:
+            if comp_type == "solar_pv":
+                inv_cap = float(cfg.get("inverter_capacity_kw") or cfg.get("capacity_kw", cfg.get("capacity_kwp", 0)))
+            elif comp_type == "battery":
+                inv_cap = float(cfg.get("inverter_capacity_kw") or max(
+                    cfg.get("max_charge_rate_kw", 0), cfg.get("max_discharge_rate_kw", 0)))
+            else:
+                inv_cap = 0
+            if inv_cap > 0:
+                costs[comp_type] = costs.get(comp_type, 0) + inv_cost_per_kw * inv_cap
+
     return costs
 
 

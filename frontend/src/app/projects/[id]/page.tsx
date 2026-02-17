@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import dynamic from "next/dynamic";
 import { toast } from "sonner";
@@ -40,6 +40,7 @@ import {
   CheckCircle2,
   AlertTriangle,
   Network,
+  RefreshCw,
 } from "lucide-react";
 
 const LocationPicker = dynamic(
@@ -66,11 +67,16 @@ export default function ProjectPage() {
     weatherDatasets,
     fetchPVGIS,
     systemHealth,
+    buses,
     fetchBuses,
     fetchBranches,
     autoGenerateNetwork,
     autoGenerateLoading,
+    networkGeneratedComponentIds,
+    networkRecommendations,
+    powerFlowResult,
     runPowerFlow,
+    setNetworkGeneratedComponentIds,
   } = useProjectStore();
 
   const [activeTab, setActiveTab] = useState<string>("advisor");
@@ -132,6 +138,64 @@ export default function ProjectPage() {
       setActiveTab("configure");
     }
   }, [currentProject, components.length]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Initialize networkGeneratedComponentIds for existing multi_bus projects
+  useEffect(() => {
+    if (
+      currentProject?.network_mode === "multi_bus" &&
+      buses.length > 0 &&
+      networkGeneratedComponentIds.length === 0 &&
+      components.length > 0
+    ) {
+      setNetworkGeneratedComponentIds(components.map((c) => c.id));
+    }
+  }, [currentProject?.network_mode, buses.length, networkGeneratedComponentIds.length, components]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Auto-generate network when entering Network tab for the first time
+  const networkAutoGenRef = useRef(false);
+  useEffect(() => {
+    if (
+      activeTab === "network" &&
+      components.length > 0 &&
+      currentProject?.network_mode !== "multi_bus" &&
+      !autoGenerateLoading &&
+      !networkAutoGenRef.current
+    ) {
+      networkAutoGenRef.current = true;
+      autoGenerateNetwork(projectId)
+        .then((result) => {
+          toast.success(
+            `Network generated: ${result.buses.length} buses, ${result.branches.length} branches`
+          );
+          runPowerFlow(projectId).catch(() => {});
+        })
+        .catch((err) => {
+          toast.error(getErrorMessage(err));
+          networkAutoGenRef.current = false;
+        });
+    }
+  }, [activeTab, components.length, currentProject?.network_mode, autoGenerateLoading]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Detect if components changed since last network generation
+  const networkStale = useMemo(() => {
+    if (buses.length === 0 || networkGeneratedComponentIds.length === 0) return false;
+    const currentIds = components.map((c) => c.id).sort().join(",");
+    const genIds = [...networkGeneratedComponentIds].sort().join(",");
+    return currentIds !== genIds;
+  }, [components, networkGeneratedComponentIds, buses.length]);
+
+  const handleRegenerate = async () => {
+    try {
+      networkAutoGenRef.current = false;
+      const result = await autoGenerateNetwork(projectId);
+      toast.success(
+        `Network regenerated: ${result.buses.length} buses, ${result.branches.length} branches`
+      );
+      runPowerFlow(projectId).catch(() => {});
+    } catch (err) {
+      toast.error(getErrorMessage(err));
+    }
+  };
 
   if (isLoading || !currentProject) {
     return (
@@ -244,6 +308,25 @@ export default function ProjectPage() {
               )}
             </TabsTrigger>
             <TabsTrigger
+              value="network"
+              className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none px-4 py-3"
+              disabled={components.length === 0}
+            >
+              <Network className="h-4 w-4 mr-2" />
+              Network
+              {buses.length > 0 && !networkStale && (
+                <CheckCircle2 className="h-3.5 w-3.5 ml-1.5 text-emerald-400" />
+              )}
+              {networkStale && (
+                <AlertTriangle className="h-3.5 w-3.5 ml-1.5 text-amber-400" />
+              )}
+              {(powerFlowResult?.voltage_violations?.length ?? 0) > 0 && (
+                <Badge variant="destructive" className="ml-1.5 text-[10px] px-1 py-0">
+                  {powerFlowResult!.voltage_violations.length}
+                </Badge>
+              )}
+            </TabsTrigger>
+            <TabsTrigger
               value="simulate"
               className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none px-4 py-3"
             >
@@ -294,14 +377,6 @@ export default function ProjectPage() {
                 </CardContent>
               </Card>
             </div>
-          ) : currentProject.network_mode === "multi_bus" ? (
-            <>
-              <SystemHealthBar />
-              <NetworkDiagram
-                projectId={projectId}
-                components={components}
-              />
-            </>
           ) : (
             <>
               <SystemHealthBar />
@@ -311,39 +386,6 @@ export default function ProjectPage() {
                     components={components}
                     onSelect={setSelectedComponentId}
                   />
-                  {/* Enable Network Mode button — auto-generates SLD */}
-                  <div className="absolute bottom-4 left-4 z-10">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="bg-background/80 backdrop-blur-sm"
-                      disabled={autoGenerateLoading}
-                      onClick={async () => {
-                        try {
-                          const result = await autoGenerateNetwork(projectId);
-                          toast.success(
-                            `SLD generated: ${result.buses.length} buses, ${result.branches.length} branches`
-                          );
-                          // Run power flow in background
-                          runPowerFlow(projectId).catch(() => {});
-                        } catch (err) {
-                          toast.error(getErrorMessage(err));
-                        }
-                      }}
-                    >
-                      {autoGenerateLoading ? (
-                        <>
-                          <div className="h-4 w-4 mr-2 animate-spin border-2 border-current border-t-transparent rounded-full" />
-                          Generating...
-                        </>
-                      ) : (
-                        <>
-                          <Network className="h-4 w-4 mr-2" />
-                          Enable Network Mode
-                        </>
-                      )}
-                    </Button>
-                  </div>
                 </div>
                 <div className="w-96 border-l border-border overflow-y-auto">
                   <ComponentPanel
@@ -353,6 +395,81 @@ export default function ProjectPage() {
                   />
                 </div>
               </div>
+            </>
+          )}
+        </TabsContent>
+
+        <TabsContent value="network" className="flex-1 flex flex-col overflow-hidden mt-0">
+          {components.length === 0 ? (
+            <div className="flex-1 flex items-center justify-center p-6">
+              <Card variant="glass" className="max-w-md w-full">
+                <CardContent className="py-12 text-center space-y-4">
+                  <Network className="h-10 w-10 text-muted-foreground mx-auto" />
+                  <div>
+                    <h3 className="text-lg font-semibold">No components configured</h3>
+                    <p className="text-sm text-muted-foreground mt-1">
+                      Add components in the Configure tab first. The network topology will be auto-generated from your system design.
+                    </p>
+                  </div>
+                  <Button onClick={() => setActiveTab("configure")}>
+                    <Settings2 className="h-4 w-4 mr-2" />
+                    Go to Configure
+                  </Button>
+                </CardContent>
+              </Card>
+            </div>
+          ) : autoGenerateLoading ? (
+            <div className="flex-1 flex items-center justify-center p-6">
+              <div className="text-center space-y-4">
+                <div className="h-10 w-10 mx-auto animate-spin border-2 border-primary border-t-transparent rounded-full" />
+                <div>
+                  <h3 className="text-lg font-semibold">Generating Network Topology</h3>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    Auto-sizing transformers, cables, and bus assignments...
+                  </p>
+                </div>
+              </div>
+            </div>
+          ) : buses.length === 0 ? (
+            <div className="flex-1 flex items-center justify-center p-6">
+              <Card variant="glass" className="max-w-md w-full">
+                <CardContent className="py-12 text-center space-y-4">
+                  <Network className="h-10 w-10 text-muted-foreground mx-auto" />
+                  <div>
+                    <h3 className="text-lg font-semibold">Network not generated</h3>
+                    <p className="text-sm text-muted-foreground mt-1">
+                      Generate the network topology from your configured components.
+                    </p>
+                  </div>
+                  <Button onClick={handleRegenerate}>
+                    <Network className="h-4 w-4 mr-2" />
+                    Generate Network
+                  </Button>
+                </CardContent>
+              </Card>
+            </div>
+          ) : (
+            <>
+              {networkStale && (
+                <div className="px-4 py-2 bg-amber-500/10 border-b border-amber-500/30 flex items-center justify-between">
+                  <div className="flex items-center gap-2 text-xs text-amber-400">
+                    <AlertTriangle className="h-3.5 w-3.5" />
+                    <span>Components have changed since the network was generated.</span>
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-7 text-xs border-amber-500/30 text-amber-400 hover:bg-amber-500/10"
+                    disabled={autoGenerateLoading}
+                    onClick={handleRegenerate}
+                  >
+                    <RefreshCw className="h-3 w-3 mr-1" />
+                    Regenerate
+                  </Button>
+                </div>
+              )}
+              <SystemHealthBar />
+              <NetworkDiagram projectId={projectId} components={components} />
             </>
           )}
         </TabsContent>

@@ -41,6 +41,7 @@ export type ComponentType =
   | "wind_turbine"
   | "battery"
   | "diesel_generator"
+  | "inverter"
   | "grid_connection";
 
 export interface Component {
@@ -61,8 +62,10 @@ export interface SolarPVConfig {
   azimuth_deg: number;
   module_type: string;
   inverter_efficiency: number;
+  inverter_capacity_kw: number | null;   // null = same as capacity_kwp (DC/AC ratio = 1.0)
+  inverter_cost_per_kw: number;          // $/kW, separate from panel cost
   system_losses: number;
-  capital_cost_per_kw: number;
+  capital_cost_per_kw: number;           // Panel + BOS cost (excl. inverter)
   om_cost_per_kw_year: number;
   lifetime_years: number;
   derating_factor: number;
@@ -89,12 +92,14 @@ export interface BatteryConfig {
   max_charge_rate_kw: number;
   max_discharge_rate_kw: number;
   round_trip_efficiency: number;
+  inverter_capacity_kw: number | null;   // null = max(charge_rate, discharge_rate)
+  inverter_cost_per_kw: number;          // $/kW, separate from battery cell cost
   min_soc: number;
   max_soc: number;
   initial_soc: number;
   chemistry: string;
   cycle_life: number;
-  capital_cost_per_kwh: number;
+  capital_cost_per_kwh: number;          // Battery cells only (excl. inverter)
   replacement_cost_per_kwh: number;
   om_cost_per_kwh_year: number;
   lifetime_years: number;
@@ -111,6 +116,18 @@ export interface DieselGeneratorConfig {
   om_cost_per_hour: number;
   lifetime_hours: number;
   start_cost: number;
+}
+
+export interface InverterConfig {
+  type: "inverter";
+  rated_power_kw: number;
+  efficiency: number;
+  mode: "grid_following" | "grid_forming";
+  bidirectional: boolean;
+  reactive_power_capability_pct: number;
+  capital_cost_per_kw: number;
+  om_cost_per_kw_year: number;
+  lifetime_years: number;
 }
 
 export interface GridConnectionConfig {
@@ -130,6 +147,7 @@ export type ComponentConfig =
   | WindTurbineConfig
   | BatteryConfig
   | DieselGeneratorConfig
+  | InverterConfig
   | GridConnectionConfig;
 
 export interface WeatherDataset {

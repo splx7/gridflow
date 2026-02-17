@@ -18,18 +18,28 @@ from engine.network.transformer_model import TRANSFORMER_LIBRARY, TransformerSpe
 # ---------------------------------------------------------------------------
 
 def _component_capacity_kw(comp: dict) -> float:
-    """Extract rated capacity (kW) from any component type."""
+    """Extract AC-side capacity (kW) from any component type.
+
+    For DC sources (PV, battery), uses inverter_capacity_kw if set,
+    otherwise falls back to the DC-side rating.
+    """
     cfg = comp.get("config", {})
     ctype = comp.get("component_type", "")
     if ctype == "solar_pv":
-        return cfg.get("capacity_kw", cfg.get("capacity_kwp", 0))
+        dc_cap = cfg.get("capacity_kw", cfg.get("capacity_kwp", 0))
+        inv_cap = cfg.get("inverter_capacity_kw")
+        return inv_cap if inv_cap is not None and inv_cap > 0 else dc_cap
     if ctype == "wind_turbine":
         qty = cfg.get("quantity", 1)
         return cfg.get("rated_power_kw", 0) * qty
     if ctype == "diesel_generator":
         return cfg.get("rated_power_kw", 0)
     if ctype == "battery":
-        return cfg.get("max_discharge_rate_kw", 0)
+        discharge = cfg.get("max_discharge_rate_kw", 0)
+        inv_cap = cfg.get("inverter_capacity_kw")
+        return inv_cap if inv_cap is not None and inv_cap > 0 else discharge
+    if ctype == "inverter":
+        return cfg.get("rated_power_kw", 0)
     if ctype == "grid_connection":
         return cfg.get("max_import_kw", 1000)
     return 0

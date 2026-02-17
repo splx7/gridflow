@@ -18,7 +18,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import type { ComponentType } from "@/types";
-import { Sun, Wind, Battery, Fuel, Plug, Trash2, Plus, Save, X } from "lucide-react";
+import { Sun, Wind, Battery, Fuel, Plug, Trash2, Plus, Save, X, Zap } from "lucide-react";
 
 const COMPONENT_DEFAULTS: Record<ComponentType, Record<string, unknown>> = {
   solar_pv: {
@@ -27,7 +27,9 @@ const COMPONENT_DEFAULTS: Record<ComponentType, Record<string, unknown>> = {
     tilt_deg: 30,
     azimuth_deg: 180,
     module_type: "mono-si",
+    inverter_capacity_kw: 10,
     inverter_efficiency: 0.96,
+    inverter_cost_per_kw: 150,
     system_losses: 0.14,
     capital_cost_per_kw: 1000,
     om_cost_per_kw_year: 15,
@@ -53,6 +55,8 @@ const COMPONENT_DEFAULTS: Record<ComponentType, Record<string, unknown>> = {
     max_charge_rate_kw: 50,
     max_discharge_rate_kw: 50,
     round_trip_efficiency: 0.9,
+    inverter_capacity_kw: 50,
+    inverter_cost_per_kw: 150,
     min_soc: 0.2,
     max_soc: 1.0,
     initial_soc: 0.5,
@@ -75,6 +79,17 @@ const COMPONENT_DEFAULTS: Record<ComponentType, Record<string, unknown>> = {
     lifetime_hours: 15000,
     start_cost: 5,
   },
+  inverter: {
+    type: "inverter",
+    rated_power_kw: 50,
+    efficiency: 0.96,
+    mode: "grid_following",
+    bidirectional: true,
+    reactive_power_capability_pct: 0,
+    capital_cost_per_kw: 150,
+    om_cost_per_kw_year: 5,
+    lifetime_years: 15,
+  },
   grid_connection: {
     type: "grid_connection",
     max_import_kw: 1000,
@@ -92,6 +107,7 @@ const COMPONENT_LABELS: Record<ComponentType, string> = {
   wind_turbine: "Wind Turbine",
   battery: "Battery Storage",
   diesel_generator: "Diesel Generator",
+  inverter: "Inverter",
   grid_connection: "Grid Connection",
 };
 
@@ -100,6 +116,7 @@ const COMPONENT_ICONS: Record<ComponentType, React.ReactNode> = {
   wind_turbine: <Wind className="h-4 w-4 text-sky-400" />,
   battery: <Battery className="h-4 w-4 text-emerald-400" />,
   diesel_generator: <Fuel className="h-4 w-4 text-orange-400" />,
+  inverter: <Zap className="h-4 w-4 text-cyan-400" />,
   grid_connection: <Plug className="h-4 w-4 text-violet-400" />,
 };
 
@@ -113,13 +130,15 @@ interface FieldMeta {
 
 const FIELD_META: Record<string, Record<string, FieldMeta>> = {
   solar_pv: {
-    capacity_kwp: { label: "Capacity", unit: "kWp", type: "number" },
+    capacity_kwp: { label: "DC Capacity", unit: "kWp", type: "number" },
     tilt_deg: { label: "Tilt", unit: "°", type: "number" },
     azimuth_deg: { label: "Azimuth", unit: "°", type: "number" },
     module_type: { label: "Module Type", type: "select", options: ["mono-si", "poly-si", "thin-film", "cis"] },
+    inverter_capacity_kw: { label: "Inverter Capacity", unit: "kW AC", type: "number" },
     inverter_efficiency: { label: "Inverter Efficiency", type: "number", step: 0.01 },
+    inverter_cost_per_kw: { label: "Inverter Cost", unit: "$/kW", type: "number" },
     system_losses: { label: "System Losses", type: "number", step: 0.01 },
-    capital_cost_per_kw: { label: "Capital Cost", unit: "$/kW", type: "number" },
+    capital_cost_per_kw: { label: "Panel + BOS Cost", unit: "$/kW", type: "number" },
     om_cost_per_kw_year: { label: "O&M Cost", unit: "$/kW/yr", type: "number" },
     lifetime_years: { label: "Lifetime", unit: "years", type: "number" },
     derating_factor: { label: "Derating Factor", unit: "%/yr", type: "number", step: 0.001 },
@@ -141,6 +160,8 @@ const FIELD_META: Record<string, Record<string, FieldMeta>> = {
     max_charge_rate_kw: { label: "Max Charge Rate", unit: "kW", type: "number" },
     max_discharge_rate_kw: { label: "Max Discharge Rate", unit: "kW", type: "number" },
     round_trip_efficiency: { label: "Round-trip Efficiency", type: "number", step: 0.01 },
+    inverter_capacity_kw: { label: "Inverter Capacity", unit: "kW", type: "number" },
+    inverter_cost_per_kw: { label: "Inverter Cost", unit: "$/kW", type: "number" },
     min_soc: { label: "Min SoC", type: "number", step: 0.01 },
     max_soc: { label: "Max SoC", type: "number", step: 0.01 },
     initial_soc: { label: "Initial SoC", type: "number", step: 0.01 },
@@ -161,6 +182,16 @@ const FIELD_META: Record<string, Record<string, FieldMeta>> = {
     om_cost_per_hour: { label: "O&M Cost", unit: "$/hr", type: "number", step: 0.1 },
     lifetime_hours: { label: "Lifetime", unit: "hours", type: "number" },
     start_cost: { label: "Start Cost", unit: "$", type: "number" },
+  },
+  inverter: {
+    rated_power_kw: { label: "Rated Power", unit: "kW", type: "number" },
+    efficiency: { label: "Peak Efficiency", type: "number", step: 0.01 },
+    mode: { label: "Mode", type: "select", options: ["grid_following", "grid_forming"] },
+    bidirectional: { label: "Bidirectional", type: "boolean" },
+    reactive_power_capability_pct: { label: "Reactive Power", unit: "% of rated", type: "number" },
+    capital_cost_per_kw: { label: "Capital Cost", unit: "$/kW", type: "number" },
+    om_cost_per_kw_year: { label: "O&M Cost", unit: "$/kW/yr", type: "number" },
+    lifetime_years: { label: "Lifetime", unit: "years", type: "number" },
   },
   grid_connection: {
     max_import_kw: { label: "Max Import", unit: "kW", type: "number" },

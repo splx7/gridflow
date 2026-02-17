@@ -641,6 +641,18 @@ class SimulationRunner:
                 temp_8760=temperature,
                 config=pv_cfg.get("config"),
             )
+            # Apply inverter capacity clipping (DC/AC ratio)
+            pv_cap_kwp = float(pv_cfg["capacity_kwp"])
+            inv_cap = float(pv_cfg.get("inverter_capacity_kw") or pv_cap_kwp)
+            if inv_cap < pv_cap_kwp:
+                clipped_kwh = float(np.sum(np.maximum(pv_output - inv_cap, 0)))
+                pv_output = np.minimum(pv_output, inv_cap)
+                logger.info(
+                    "Inverter clipping: %.0f kWh/year clipped (DC/AC=%.2f)",
+                    clipped_kwh,
+                    pv_cap_kwp / inv_cap,
+                )
+
             logger.info(
                 "PV simulation complete: %.0f kWh/year",
                 float(np.sum(pv_output)),
