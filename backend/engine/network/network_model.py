@@ -11,7 +11,7 @@ from enum import Enum
 
 import numpy as np
 
-from engine.network.per_unit import cable_z_pu, transformer_z_pu
+from engine.network.per_unit import cable_z_pu, transformer_z_pu, inverter_z_pu
 
 
 class BusType(str, Enum):
@@ -169,6 +169,15 @@ def build_network_from_config(
             tap = complex(cfg.get("tap_ratio", 1.0), 0)
             rating_mva = cfg.get("rating_kva", 1000.0) / 1000.0
             b_pu = 0.0
+        elif branch_type == "inverter":
+            z_pu = inverter_z_pu(
+                efficiency=cfg.get("efficiency", 0.96),
+                rating_kw=cfg.get("rated_power_kw", 100.0),
+                s_base_mva=s_base_mva,
+            )
+            tap = 1.0 + 0j
+            b_pu = 0.0
+            rating_mva = cfg.get("rated_power_kw", 100.0) / 1000.0
         else:
             # Cable or line — use LV side voltage as base
             v_base = buses[to_idx].nominal_voltage_kv

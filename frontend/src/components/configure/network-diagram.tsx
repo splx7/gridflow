@@ -20,6 +20,7 @@ import { useProjectStore } from "@/stores/project-store";
 import BusNodeComponent from "./bus-node";
 import CableEdgeComponent from "./cable-edge";
 import TransformerEdgeComponent from "./transformer-edge";
+import InverterEdgeComponent from "./inverter-edge";
 import NetworkToolbar from "./network-toolbar";
 import BusDetailPanel from "./bus-detail-panel";
 import ComponentPanel from "./component-panel";
@@ -33,6 +34,7 @@ const nodeTypes: NodeTypes = {
 const edgeTypes: EdgeTypes = {
   cable: CableEdgeComponent as unknown as EdgeTypes["cable"],
   transformer: TransformerEdgeComponent as unknown as EdgeTypes["transformer"],
+  inverter: InverterEdgeComponent as unknown as EdgeTypes["inverter"],
 };
 
 // Auto-layout: position buses in a vertical tree
@@ -192,28 +194,47 @@ export default function NetworkDiagram({
   const branchEdges: Edge[] = useMemo(() => {
     return branches.map((br) => {
       const flow = powerFlowResult?.branch_flows[br.name];
-      const isTransformer = br.branch_type === "transformer";
+      const btype = br.branch_type;
+
+      let edgeType: string;
+      let data: Record<string, unknown>;
+
+      if (btype === "transformer") {
+        edgeType = "transformer";
+        data = {
+          label: br.name,
+          ratingKva: br.config.rating_kva as number,
+          flowKw: flow?.from_kw,
+          loadingPct: flow?.loading_pct,
+          lossKw: flow?.loss_kw,
+        };
+      } else if (btype === "inverter") {
+        edgeType = "inverter";
+        data = {
+          label: br.name,
+          ratedKw: br.config.rated_power_kw as number,
+          mode: br.config.mode as string,
+          efficiency: br.config.efficiency as number,
+          flowKw: flow?.from_kw,
+          loadingPct: flow?.loading_pct,
+        };
+      } else {
+        edgeType = "cable";
+        data = {
+          label: br.name,
+          vdPct: flow?.vd_pct,
+          flowKw: flow?.from_kw,
+          loadingPct: flow?.loading_pct,
+        };
+      }
 
       return {
         id: br.id,
         source: br.from_bus_id,
         target: br.to_bus_id,
-        type: isTransformer ? "transformer" : "cable",
+        type: edgeType,
         selected: br.id === selectedBranchId,
-        data: isTransformer
-          ? {
-              label: br.name,
-              ratingKva: br.config.rating_kva as number,
-              flowKw: flow?.from_kw,
-              loadingPct: flow?.loading_pct,
-              lossKw: flow?.loss_kw,
-            }
-          : {
-              label: br.name,
-              vdPct: flow?.vd_pct,
-              flowKw: flow?.from_kw,
-              loadingPct: flow?.loading_pct,
-            },
+        data,
       };
     });
   }, [branches, powerFlowResult, selectedBranchId]);

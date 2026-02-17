@@ -7,7 +7,7 @@ from pydantic import BaseModel, Field
 class BranchCreate(BaseModel):
     from_bus_id: uuid.UUID
     to_bus_id: uuid.UUID
-    branch_type: str = Field(pattern="^(cable|line|transformer)$")
+    branch_type: str = Field(pattern="^(cable|line|transformer|inverter)$")
     name: str = Field(max_length=255)
     config: dict = Field(default_factory=dict)
 
@@ -15,7 +15,7 @@ class BranchCreate(BaseModel):
 class BranchUpdate(BaseModel):
     from_bus_id: uuid.UUID | None = None
     to_bus_id: uuid.UUID | None = None
-    branch_type: str | None = Field(default=None, pattern="^(cable|line|transformer)$")
+    branch_type: str | None = Field(default=None, pattern="^(cable|line|transformer|inverter)$")
     name: str | None = Field(default=None, max_length=255)
     config: dict | None = None
 

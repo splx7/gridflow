@@ -324,7 +324,7 @@ export interface BusCreate {
   config?: Record<string, unknown>;
 }
 
-export type BranchType = "cable" | "line" | "transformer";
+export type BranchType = "cable" | "line" | "transformer" | "inverter";
 
 export interface Branch {
   id: string;

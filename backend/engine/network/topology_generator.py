@@ -93,6 +93,36 @@ def _current_from_power(p_kw: float, v_kv: float, pf: float = 0.85) -> float:
 LARGE_COMPONENT_THRESHOLD_KW = 100
 
 
+DC_SOURCE_TYPES = {"solar_pv", "battery"}
+AC_SOURCE_TYPES = {"diesel_generator", "wind_turbine"}
+
+
+def _inverter_capacity_kw(comp: dict) -> float:
+    """Get the inverter AC-side rating for a DC source component."""
+    cfg = comp.get("config", {})
+    ctype = comp.get("component_type", "")
+    inv_cap = cfg.get("inverter_capacity_kw")
+    if inv_cap is not None and inv_cap > 0:
+        return inv_cap
+    if ctype == "solar_pv":
+        return cfg.get("capacity_kw", cfg.get("capacity_kwp", 0))
+    if ctype == "battery":
+        return max(
+            cfg.get("max_charge_rate_kw", 0),
+            cfg.get("max_discharge_rate_kw", 0),
+        )
+    return cfg.get("rated_power_kw", 0)
+
+
+def _inverter_efficiency(comp: dict) -> float:
+    """Get inverter efficiency for a DC source component."""
+    cfg = comp.get("config", {})
+    eff = cfg.get("inverter_efficiency")
+    if eff is not None and 0 < eff <= 1:
+        return eff
+    return 0.96
+
+
 def generate_radial_topology(
     components: list[dict],
     load_profiles: list[dict],
@@ -101,7 +131,11 @@ def generate_radial_topology(
     cable_material: str = "Cu",
     default_cable_length_km: float = 0.05,
 ) -> dict:
-    """Generate a radial network topology from project components.
+    """Generate an electrically correct radial network topology.
+
+    DC sources (PV, battery) are connected through inverter branches to AC
+    buses. AC sources (DG, wind) are connected directly. Off-grid systems
+    use a GFM (grid-forming) battery inverter as voltage reference.
 
     Args:
         components: list of component dicts with keys:
@@ -122,194 +156,246 @@ def generate_radial_topology(
     load_allocations: list[dict] = []
     recommendations: list[dict] = []
 
-    # Classify components
+    # Classify components by DC/AC nature
     grid_connections = [c for c in components if c["component_type"] == "grid_connection"]
-    generators = [
-        c for c in components
-        if c["component_type"] in ("solar_pv", "wind_turbine", "diesel_generator")
-    ]
-    storage = [c for c in components if c["component_type"] == "battery"]
-    all_dg = generators + storage  # distributed energy resources
+    dc_sources = [c for c in components if c["component_type"] in DC_SOURCE_TYPES]
+    ac_sources = [c for c in components if c["component_type"] in AC_SOURCE_TYPES]
+    batteries = [c for c in components if c["component_type"] == "battery"]
+    # Standalone inverter components (not auto-generated)
+    standalone_inverters = [c for c in components if c["component_type"] == "inverter"]
 
     has_grid = len(grid_connections) > 0
+    has_battery = len(batteries) > 0
 
     # -----------------------------------------------------------------------
-    # 1. Slack Bus
+    # 1. Grid Bus + Transformer  OR  Main AC Bus (off-grid)
     # -----------------------------------------------------------------------
     if has_grid:
-        gc = grid_connections[0]
-        slack_bus = {
+        # Grid-connected: Grid Bus (slack, MV) → Transformer → Main LV Bus (pq)
+        buses.append({
             "name": "Grid Bus",
             "bus_type": "slack",
             "nominal_voltage_kv": mv_voltage_kv,
             "x_position": 400,
             "y_position": 0,
-            "config": {
-                "voltage_setpoint_pu": 1.0,
-                "sc_mva": 250,
-            },
-        }
-    else:
-        # Off-grid: largest generator becomes slack
-        all_gens = generators + storage
-        if all_gens:
-            largest = max(all_gens, key=_component_capacity_kw)
-            slack_name = f"{largest['name']} Bus"
+            "config": {"voltage_setpoint_pu": 1.0, "sc_mva": 250},
+        })
+        grid_bus_idx = 0
+
+        buses.append({
+            "name": "Main LV Bus",
+            "bus_type": "pq",
+            "nominal_voltage_kv": lv_voltage_kv,
+            "x_position": 400,
+            "y_position": 200,
+            "config": {},
+        })
+        main_ac_idx = 1
+
+        # Grid connection assigned to Grid Bus
+        for gc in grid_connections:
+            component_assignments.append({
+                "component_id": gc["id"],
+                "bus_idx": grid_bus_idx,
+            })
+
+        # Transformer between Grid Bus and Main LV Bus
+        if mv_voltage_kv != lv_voltage_kv:
+            total_gen_kw = sum(_component_capacity_kw(c) for c in dc_sources + ac_sources)
+            gc_import = grid_connections[0].get("config", {}).get("max_import_kw", 1000)
+            required_kva = (total_gen_kw + gc_import) * 1.25
+
+            tx = _select_transformer(required_kva, mv_voltage_kv, lv_voltage_kv)
+            if tx:
+                branches.append({
+                    "name": f"TX1 ({tx.name})",
+                    "branch_type": "transformer",
+                    "from_bus_idx": grid_bus_idx,
+                    "to_bus_idx": main_ac_idx,
+                    "config": {
+                        "rating_kva": tx.rating_kva,
+                        "impedance_pct": tx.impedance_pct,
+                        "x_r_ratio": tx.x_r_ratio,
+                        "tap_ratio": 1.0,
+                        "vector_group": tx.vector_group,
+                    },
+                })
+                utilisation = (total_gen_kw + gc_import) / tx.rating_kva * 100
+                recommendations.append({
+                    "level": "info",
+                    "code": "TX_SIZING",
+                    "message": f"Selected {tx.name} ({tx.rating_kva} kVA) at {utilisation:.0f}% utilisation",
+                    "suggestion": "Adjust transformer if system capacity changes significantly",
+                })
+                if utilisation > 80:
+                    recommendations.append({
+                        "level": "warning",
+                        "code": "TX_HIGH_LOADING",
+                        "message": f"Transformer utilisation {utilisation:.0f}% exceeds 80%",
+                        "suggestion": "Consider a larger transformer or reducing total generation capacity",
+                    })
+            else:
+                branches.append({
+                    "name": "TX1 (Custom)",
+                    "branch_type": "transformer",
+                    "from_bus_idx": grid_bus_idx,
+                    "to_bus_idx": main_ac_idx,
+                    "config": {
+                        "rating_kva": required_kva,
+                        "impedance_pct": 6.0,
+                        "x_r_ratio": 10.0,
+                        "tap_ratio": 1.0,
+                    },
+                })
+                recommendations.append({
+                    "level": "warning",
+                    "code": "TX_CUSTOM",
+                    "message": f"No standard transformer found for {required_kva:.0f} kVA — using custom parameters",
+                    "suggestion": "Verify transformer impedance and X/R ratio with manufacturer data",
+                })
         else:
-            slack_name = "Main Bus"
-        slack_bus = {
-            "name": slack_name,
+            # Same voltage — direct cable
+            cable_i = _current_from_power(
+                grid_connections[0].get("config", {}).get("max_import_kw", 1000),
+                lv_voltage_kv,
+            )
+            cable = _select_cable(cable_i * 1.25, "lv", cable_material)
+            if cable:
+                branches.append({
+                    "name": f"Feeder ({cable.name})",
+                    "branch_type": "cable",
+                    "from_bus_idx": grid_bus_idx,
+                    "to_bus_idx": main_ac_idx,
+                    "config": {
+                        "r_ohm_per_km": cable.r_ohm_per_km,
+                        "x_ohm_per_km": cable.x_ohm_per_km,
+                        "length_km": default_cable_length_km,
+                        "ampacity_a": cable.ampacity_a,
+                    },
+                })
+    else:
+        # Off-grid: Main AC Bus is the single AC bus
+        # Slack assignment: battery present → GFM inverter provides V/f
+        #                   no battery → largest DG bus = slack
+        buses.append({
+            "name": "Main AC Bus",
             "bus_type": "slack",
             "nominal_voltage_kv": lv_voltage_kv,
             "x_position": 400,
-            "y_position": 0,
-            "config": {
-                "voltage_setpoint_pu": 1.0,
-            },
-        }
+            "y_position": 100,
+            "config": {"voltage_setpoint_pu": 1.0},
+        })
+        main_ac_idx = 0
 
-    buses.append(slack_bus)
-    slack_idx = 0
-
-    # -----------------------------------------------------------------------
-    # 2. Main LV Bus
-    # -----------------------------------------------------------------------
-    main_lv_bus = {
-        "name": "Main LV Bus",
-        "bus_type": "pq",
-        "nominal_voltage_kv": lv_voltage_kv,
-        "x_position": 400,
-        "y_position": 250,
-        "config": {},
-    }
-    buses.append(main_lv_bus)
-    main_lv_idx = 1
-
-    # -----------------------------------------------------------------------
-    # 3. Transformer (MV→LV) if grid-connected
-    # -----------------------------------------------------------------------
-    if has_grid and mv_voltage_kv != lv_voltage_kv:
-        # Total capacity = all generators + grid import
-        total_gen_kw = sum(_component_capacity_kw(c) for c in generators)
-        gc_import = grid_connections[0].get("config", {}).get("max_import_kw", 1000)
-        total_capacity_kw = total_gen_kw + gc_import
-        required_kva = total_capacity_kw * 1.25  # 25% margin
-
-        tx = _select_transformer(required_kva, mv_voltage_kv, lv_voltage_kv)
-        if tx:
-            tx_branch = {
-                "name": f"TX1 ({tx.name})",
-                "branch_type": "transformer",
-                "from_bus_idx": slack_idx,
-                "to_bus_idx": main_lv_idx,
-                "config": {
-                    "rating_kva": tx.rating_kva,
-                    "impedance_pct": tx.impedance_pct,
-                    "x_r_ratio": tx.x_r_ratio,
-                    "tap_ratio": 1.0,
-                    "vector_group": tx.vector_group,
-                },
-            }
-            branches.append(tx_branch)
-
-            utilisation = (total_capacity_kw / tx.rating_kva) * 100
+        if has_battery:
             recommendations.append({
                 "level": "info",
-                "code": "TX_SIZING",
-                "message": f"Selected {tx.name} ({tx.rating_kva} kVA) at {utilisation:.0f}% utilisation",
-                "suggestion": "Adjust transformer if system capacity changes significantly",
+                "code": "GFM_INVERTER",
+                "message": "Battery inverter operates in grid-forming (GFM) mode — provides voltage and frequency reference",
+                "suggestion": "Ensure battery capacity is sufficient for transient loads",
             })
-            if utilisation > 80:
-                recommendations.append({
-                    "level": "warning",
-                    "code": "TX_HIGH_LOADING",
-                    "message": f"Transformer utilisation {utilisation:.0f}% exceeds 80%",
-                    "suggestion": "Consider a larger transformer or reducing total generation capacity",
-                })
-        else:
-            # No suitable standard transformer — use generic
-            tx_branch = {
-                "name": "TX1 (Custom)",
-                "branch_type": "transformer",
-                "from_bus_idx": slack_idx,
-                "to_bus_idx": main_lv_idx,
-                "config": {
-                    "rating_kva": required_kva,
-                    "impedance_pct": 6.0,
-                    "x_r_ratio": 10.0,
-                    "tap_ratio": 1.0,
-                },
-            }
-            branches.append(tx_branch)
+        elif ac_sources:
             recommendations.append({
-                "level": "warning",
-                "code": "TX_CUSTOM",
-                "message": f"No standard transformer found for {required_kva:.0f} kVA — using custom parameters",
-                "suggestion": "Verify transformer impedance and X/R ratio with manufacturer data",
-            })
-
-    elif has_grid and mv_voltage_kv == lv_voltage_kv:
-        # Same voltage — direct cable connection
-        cable_i = _current_from_power(
-            grid_connections[0].get("config", {}).get("max_import_kw", 1000),
-            lv_voltage_kv,
-        )
-        cable = _select_cable(cable_i * 1.25, "lv", cable_material)
-        if cable:
-            branches.append({
-                "name": f"Feeder ({cable.name})",
-                "branch_type": "cable",
-                "from_bus_idx": slack_idx,
-                "to_bus_idx": main_lv_idx,
-                "config": {
-                    "r_ohm_per_km": cable.r_ohm_per_km,
-                    "x_ohm_per_km": cable.x_ohm_per_km,
-                    "length_km": default_cable_length_km,
-                    "ampacity_a": cable.ampacity_a,
-                },
+                "level": "info",
+                "code": "DG_SLACK",
+                "message": "Largest generator provides voltage/frequency reference (no battery for GFM inverter)",
+                "suggestion": "Consider adding battery storage for better power quality",
             })
 
     # -----------------------------------------------------------------------
-    # 4. Assign components to buses + create dedicated buses for large ones
+    # 2. DC sources → Inverter branch → DC Bus
     # -----------------------------------------------------------------------
-    bus_offset_x = 0
-
-    for comp in components:
-        cap_kw = _component_capacity_kw(comp)
+    dc_bus_x = 100
+    for comp in dc_sources:
         ctype = comp["component_type"]
+        cfg = comp.get("config", {})
+        inv_kw = _inverter_capacity_kw(comp)
+        inv_eff = _inverter_efficiency(comp)
 
-        if ctype == "grid_connection":
-            # Grid connection → slack bus
-            component_assignments.append({
-                "component_id": comp["id"],
-                "bus_idx": slack_idx,
-            })
-            continue
+        # Create DC bus for this component
+        dc_bus = {
+            "name": f"{comp['name']} DC Bus",
+            "bus_type": "pq",
+            "nominal_voltage_kv": lv_voltage_kv,
+            "x_position": dc_bus_x,
+            "y_position": 450,
+            "config": {},
+        }
+        dc_bus_idx = len(buses)
+        buses.append(dc_bus)
+        dc_bus_x += 250
+
+        # Inverter branch: Main AC Bus → DC Bus
+        is_battery = ctype == "battery"
+        bidirectional = is_battery
+        if has_grid:
+            mode = "GFL"
+        else:
+            mode = "GFM" if is_battery else "GFL"
+
+        inv_name = f"Inv-{comp['name']}"
+        if mode == "GFM":
+            inv_name += " (GFM)"
+
+        branches.append({
+            "name": inv_name,
+            "branch_type": "inverter",
+            "from_bus_idx": main_ac_idx,
+            "to_bus_idx": dc_bus_idx,
+            "config": {
+                "rated_power_kw": inv_kw,
+                "efficiency": inv_eff,
+                "mode": mode,
+                "bidirectional": bidirectional,
+            },
+        })
+
+        recommendations.append({
+            "level": "info",
+            "code": "INVERTER_SIZING",
+            "message": (
+                f"{inv_name}: {inv_kw:.0f} kW {mode}"
+                f"{' bidirectional' if bidirectional else ''}"
+                f", η={inv_eff*100:.0f}%"
+            ),
+            "suggestion": f"Inverter connects {comp['name']} DC bus to Main AC bus",
+        })
+
+        # Assign component to its DC bus
+        component_assignments.append({
+            "component_id": comp["id"],
+            "bus_idx": dc_bus_idx,
+        })
+
+    # -----------------------------------------------------------------------
+    # 3. AC sources → Cable (large) or direct (small)
+    # -----------------------------------------------------------------------
+    ac_bus_x = 100 + dc_bus_x  # offset right of DC buses
+    for comp in ac_sources:
+        cap_kw = _component_capacity_kw(comp)
 
         if cap_kw >= LARGE_COMPONENT_THRESHOLD_KW:
-            # Dedicated bus for large component
-            bus_x = 100 + bus_offset_x
-            bus_offset_x += 250
-            new_bus = {
+            # Dedicated AC bus with cable
+            ac_bus = {
                 "name": f"{comp['name']} Bus",
                 "bus_type": "pq",
                 "nominal_voltage_kv": lv_voltage_kv,
-                "x_position": bus_x,
-                "y_position": 500,
+                "x_position": ac_bus_x,
+                "y_position": 450,
                 "config": {},
             }
-            new_bus_idx = len(buses)
-            buses.append(new_bus)
+            ac_bus_idx = len(buses)
+            buses.append(ac_bus)
+            ac_bus_x += 250
 
-            # Cable from Main LV to dedicated bus
             cable_i = _current_from_power(cap_kw, lv_voltage_kv)
             cable = _select_cable(cable_i * 1.25, "lv", cable_material)
             if cable:
                 branches.append({
                     "name": f"Cable to {comp['name']} ({cable.name})",
                     "branch_type": "cable",
-                    "from_bus_idx": main_lv_idx,
-                    "to_bus_idx": new_bus_idx,
+                    "from_bus_idx": main_ac_idx,
+                    "to_bus_idx": ac_bus_idx,
                     "config": {
                         "r_ohm_per_km": cable.r_ohm_per_km,
                         "x_ohm_per_km": cable.x_ohm_per_km,
@@ -324,12 +410,11 @@ def generate_radial_topology(
                     "suggestion": f"Cable utilisation: {cable_i / cable.ampacity_a * 100:.0f}%",
                 })
             else:
-                # Fallback with generic cable
                 branches.append({
                     "name": f"Cable to {comp['name']}",
                     "branch_type": "cable",
-                    "from_bus_idx": main_lv_idx,
-                    "to_bus_idx": new_bus_idx,
+                    "from_bus_idx": main_ac_idx,
+                    "to_bus_idx": ac_bus_idx,
                     "config": {
                         "r_ohm_per_km": 0.1,
                         "x_ohm_per_km": 0.07,
@@ -346,23 +431,32 @@ def generate_radial_topology(
 
             component_assignments.append({
                 "component_id": comp["id"],
-                "bus_idx": new_bus_idx,
+                "bus_idx": ac_bus_idx,
             })
         else:
-            # Small component → Main LV Bus directly
+            # Small AC source → Main AC Bus directly
             component_assignments.append({
                 "component_id": comp["id"],
-                "bus_idx": main_lv_idx,
+                "bus_idx": main_ac_idx,
             })
+
+    # -----------------------------------------------------------------------
+    # 4. Standalone inverter components → assign to Main AC Bus
+    # -----------------------------------------------------------------------
+    for comp in standalone_inverters:
+        component_assignments.append({
+            "component_id": comp["id"],
+            "bus_idx": main_ac_idx,
+        })
 
     # -----------------------------------------------------------------------
     # 5. Load allocations
     # -----------------------------------------------------------------------
     if load_profiles:
         load_allocations.append({
-            "bus_idx": main_lv_idx,
+            "bus_idx": main_ac_idx,
             "load_profile_id": load_profiles[0]["id"],
-            "name": f"Load @ Main LV Bus",
+            "name": "Load @ Main AC Bus",
             "fraction": 1.0,
             "power_factor": 0.85,
         })
@@ -372,20 +466,23 @@ def generate_radial_topology(
     # -----------------------------------------------------------------------
     n_buses = len(buses)
     n_branches = len(branches)
-    n_large = sum(1 for c in components if _component_capacity_kw(c) >= LARGE_COMPONENT_THRESHOLD_KW and c["component_type"] != "grid_connection")
-    n_small = len(components) - n_large - len(grid_connections)
+    n_inverters = sum(1 for b in branches if b["branch_type"] == "inverter")
+    n_dc = len(dc_sources)
+    n_ac = len(ac_sources)
 
     recommendations.insert(0, {
         "level": "info",
         "code": "TOPOLOGY_SUMMARY",
         "message": (
-            f"Generated radial topology: {n_buses} buses, {n_branches} branches. "
-            f"{n_large} component(s) on dedicated buses, {n_small} on Main LV Bus."
+            f"Generated radial topology: {n_buses} buses, {n_branches} branches "
+            f"({n_inverters} inverter{'s' if n_inverters != 1 else ''}, "
+            f"{n_dc} DC source{'s' if n_dc != 1 else ''}, "
+            f"{n_ac} AC source{'s' if n_ac != 1 else ''})."
         ),
-        "suggestion": "Review the SLD and adjust bus assignments as needed",
+        "suggestion": "Review the SLD — DC sources connect through inverters to AC buses",
     })
 
-    if not has_grid and not generators:
+    if not has_grid and not ac_sources and not dc_sources:
         recommendations.append({
             "level": "error",
             "code": "NO_SOURCE",

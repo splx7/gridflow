@@ -73,6 +73,20 @@ def cable_z_pu(
     return ohm_to_pu(z_ohm, v_base_kv, s_base_mva)
 
 
+def inverter_z_pu(efficiency: float, rating_kw: float, s_base_mva: float) -> complex:
+    """Inverter efficiency-loss model as per-unit impedance.
+
+    r_pu models conduction/switching losses, x_pu small for solver stability.
+    """
+    rating_mva = rating_kw / 1000.0
+    if rating_mva <= 0:
+        return complex(0.01, 0.001)
+    loss_fraction = max(1 - efficiency, 0.001)
+    r_pu = loss_fraction * (s_base_mva / rating_mva)
+    x_pu = 0.001 * (s_base_mva / rating_mva)
+    return complex(r_pu, x_pu)
+
+
 def power_to_pu(p_kw: float, q_kvar: float, s_base_mva: float) -> complex:
     """Convert power (kW, kvar) to per-unit complex power S = P + jQ."""
     return complex(p_kw / 1000.0, q_kvar / 1000.0) / s_base_mva
