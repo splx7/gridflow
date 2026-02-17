@@ -9,7 +9,8 @@ import { compareSimulations, getErrorMessage } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { ArrowLeft, GitCompare, Loader2, CheckCircle2 } from "lucide-react";
+import { ArrowLeft, GitCompare, Loader2, CheckCircle2, Download } from "lucide-react";
+import ComparisonChart from "@/components/results/comparison-chart";
 
 interface ComparisonRow {
   simulation_id: string;
@@ -21,6 +22,17 @@ interface ComparisonRow {
   payback_years: number | null;
   renewable_fraction: number;
   co2_emissions_kg: number;
+  cost_breakdown?: Record<string, number>;
+}
+
+function downloadCSV(content: string, filename: string) {
+  const blob = new Blob([content], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
 }
 
 export default function ComparePage() {
@@ -71,6 +83,17 @@ export default function ComparePage() {
     }
   };
 
+  const handleExportCSV = () => {
+    if (!comparison) return;
+    const headers = ["Metric", ...comparison.map((r) => r.simulation_name)];
+    const rows = [headers.join(",")];
+    for (const metric of metrics) {
+      const vals = comparison.map((r) => metric.raw(r));
+      rows.push([metric.label, ...vals].join(","));
+    }
+    downloadCSV(rows.join("\n"), `comparison_${projectId.slice(0, 8)}.csv`);
+  };
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
@@ -86,59 +109,111 @@ export default function ComparePage() {
       ? `${(v / 1e3).toFixed(decimals)}k`
       : v.toFixed(decimals);
 
-  const metrics = [
+  const metrics: {
+    label: string;
+    get: (r: ComparisonRow) => string;
+    raw: (r: ComparisonRow) => number | string;
+    bestFn?: "min" | "max";
+  }[] = [
     {
       label: "Dispatch Strategy",
-      get: (r: ComparisonRow) => r.dispatch_strategy,
+      get: (r) => r.dispatch_strategy,
+      raw: (r) => r.dispatch_strategy,
     },
     {
       label: "NPC",
-      get: (r: ComparisonRow) => `$${fmt(r.npc)}`,
+      get: (r) => `$${fmt(r.npc)}`,
+      raw: (r) => r.npc,
+      bestFn: "min",
     },
     {
       label: "LCOE ($/kWh)",
-      get: (r: ComparisonRow) => `$${r.lcoe.toFixed(3)}`,
+      get: (r) => `$${r.lcoe.toFixed(3)}`,
+      raw: (r) => r.lcoe,
+      bestFn: "min",
     },
     {
       label: "IRR",
-      get: (r: ComparisonRow) =>
+      get: (r) =>
         r.irr != null ? `${(r.irr * 100).toFixed(1)}%` : "N/A",
+      raw: (r) => r.irr ?? 0,
+      bestFn: "max",
     },
     {
       label: "Payback",
-      get: (r: ComparisonRow) =>
+      get: (r) =>
         r.payback_years != null
           ? `${r.payback_years.toFixed(1)} yr`
           : "N/A",
+      raw: (r) => r.payback_years ?? 999,
+      bestFn: "min",
     },
     {
       label: "RE Fraction",
-      get: (r: ComparisonRow) =>
+      get: (r) =>
         `${(r.renewable_fraction * 100).toFixed(1)}%`,
+      raw: (r) => r.renewable_fraction,
+      bestFn: "max",
     },
     {
       label: "CO2 (t/yr)",
-      get: (r: ComparisonRow) =>
+      get: (r) =>
         `${(r.co2_emissions_kg / 1000).toFixed(1)}`,
+      raw: (r) => r.co2_emissions_kg,
+      bestFn: "min",
     },
   ];
+
+  function getBestWorstIndices(
+    comparison: ComparisonRow[],
+    metric: (typeof metrics)[number]
+  ): { best: number; worst: number } | null {
+    if (!metric.bestFn || comparison.length < 2) return null;
+    const values = comparison.map((r) => {
+      const v = metric.raw(r);
+      return typeof v === "number" ? v : NaN;
+    });
+    if (values.some(isNaN)) return null;
+
+    let bestIdx = 0;
+    let worstIdx = 0;
+    for (let i = 1; i < values.length; i++) {
+      if (metric.bestFn === "min") {
+        if (values[i] < values[bestIdx]) bestIdx = i;
+        if (values[i] > values[worstIdx]) worstIdx = i;
+      } else {
+        if (values[i] > values[bestIdx]) bestIdx = i;
+        if (values[i] < values[worstIdx]) worstIdx = i;
+      }
+    }
+    // Only highlight worst differently when 3+ sims
+    return { best: bestIdx, worst: comparison.length >= 3 ? worstIdx : -1 };
+  }
 
   return (
     <div className="min-h-screen flex flex-col">
       <header className="border-b border-border bg-background/50 backdrop-blur shrink-0">
-        <div className="max-w-full mx-auto px-4 py-3 flex items-center gap-4">
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => router.push(`/projects/${projectId}`)}
-          >
-            <ArrowLeft className="h-4 w-4" />
-            Project
-          </Button>
-          <h1 className="text-lg font-semibold flex items-center gap-2">
-            <GitCompare className="h-5 w-5 text-primary" />
-            Compare Simulations
-          </h1>
+        <div className="max-w-full mx-auto px-4 py-3 flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => router.push(`/projects/${projectId}`)}
+            >
+              <ArrowLeft className="h-4 w-4" />
+              Project
+            </Button>
+            <h1 className="text-lg font-semibold flex items-center gap-2">
+              <GitCompare className="h-5 w-5 text-primary" />
+              Compare Simulations
+            </h1>
+          </div>
+          {comparison && (
+            <Button variant="outline" size="sm" onClick={handleExportCSV}>
+              <Download className="h-4 w-4 mr-1.5" />
+              Export CSV
+            </Button>
+          )}
         </div>
       </header>
 
@@ -236,6 +311,7 @@ export default function ComparePage() {
                   <tbody>
                     {metrics.map((metric) => {
                       const values = comparison.map((r) => metric.get(r));
+                      const bw = getBestWorstIndices(comparison, metric);
                       return (
                         <tr
                           key={metric.label}
@@ -244,14 +320,23 @@ export default function ComparePage() {
                           <td className="py-3 px-4 text-muted-foreground">
                             {metric.label}
                           </td>
-                          {comparison.map((row, i) => (
-                            <td
-                              key={row.simulation_id}
-                              className="py-3 px-4 text-right font-mono"
-                            >
-                              {values[i]}
-                            </td>
-                          ))}
+                          {comparison.map((row, i) => {
+                            let cellClass = "py-3 px-4 text-right font-mono";
+                            if (bw) {
+                              if (i === bw.best)
+                                cellClass += " text-emerald-400 font-bold";
+                              else if (i === bw.worst)
+                                cellClass += " text-red-400";
+                            }
+                            return (
+                              <td
+                                key={row.simulation_id}
+                                className={cellClass}
+                              >
+                                {values[i]}
+                              </td>
+                            );
+                          })}
                         </tr>
                       );
                     })}
@@ -261,6 +346,9 @@ export default function ComparePage() {
             </CardContent>
           </Card>
         )}
+
+        {/* Charts */}
+        {comparison && <ComparisonChart data={comparison} />}
       </div>
     </div>
   );

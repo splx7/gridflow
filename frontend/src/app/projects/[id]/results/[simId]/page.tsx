@@ -4,14 +4,47 @@ import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { useAuthStore } from "@/stores/auth-store";
-import { getEconomics, getErrorMessage, getTimeseries } from "@/lib/api";
-import type { EconomicsResult, TimeseriesResult } from "@/types";
+import {
+  getEconomics,
+  getErrorMessage,
+  getNetworkResults,
+  getTimeseries,
+  listSimulations,
+} from "@/lib/api";
+import type {
+  EconomicsResult,
+  NetworkResultsData,
+  Simulation,
+  TimeseriesResult,
+} from "@/types";
 import TimeseriesChart from "@/components/results/timeseries-chart";
 import EconomicsPanel from "@/components/results/economics-panel";
 import EnergyBreakdown from "@/components/results/energy-breakdown";
+import ResultsSummary from "@/components/results/results-summary";
+import NetworkResultsPanel from "@/components/results/network-results-panel";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, Activity, DollarSign, BarChart3, Loader2 } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
+  ArrowLeft,
+  Activity,
+  DollarSign,
+  BarChart3,
+  Network,
+  Download,
+  Loader2,
+} from "lucide-react";
+import {
+  exportTimeseriesCSV,
+  exportEconomicsCSV,
+  exportNetworkCSV,
+} from "@/lib/export";
 
 export default function ResultsPage() {
   const params = useParams();
@@ -22,6 +55,8 @@ export default function ResultsPage() {
 
   const [economics, setEconomics] = useState<EconomicsResult | null>(null);
   const [timeseries, setTimeseries] = useState<TimeseriesResult | null>(null);
+  const [networkData, setNetworkData] = useState<NetworkResultsData | null>(null);
+  const [simMeta, setSimMeta] = useState<Simulation | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -38,19 +73,34 @@ export default function ResultsPage() {
     if (isAuthenticated && simId) {
       setLoading(true);
       const fetchData = async () => {
-        const [econResult, tsResult] = await Promise.allSettled([
+        const [econResult, tsResult, netResult, simsResult] = await Promise.allSettled([
           getEconomics(simId),
           getTimeseries(simId),
+          getNetworkResults(simId),
+          listSimulations(projectId),
         ]);
+
         if (econResult.status === "fulfilled") setEconomics(econResult.value);
         else toast.error("Failed to load economics: " + getErrorMessage(econResult.reason));
+
         if (tsResult.status === "fulfilled") setTimeseries(tsResult.value);
         else toast.error("Failed to load timeseries: " + getErrorMessage(tsResult.reason));
+
+        if (netResult.status === "fulfilled") {
+          setNetworkData(netResult.value as NetworkResultsData);
+        }
+        // 404 is expected for single_bus — silently ignore
+
+        if (simsResult.status === "fulfilled") {
+          const match = simsResult.value.find((s) => s.id === simId);
+          if (match) setSimMeta(match);
+        }
+
         setLoading(false);
       };
       fetchData();
     }
-  }, [isAuthenticated, simId]);
+  }, [isAuthenticated, simId, projectId]);
 
   if (isLoading || loading) {
     return (
@@ -60,8 +110,13 @@ export default function ResultsPage() {
     );
   }
 
+  const strategyLabel = simMeta?.dispatch_strategy
+    ?.replace(/_/g, " ")
+    .replace(/\b\w/g, (c) => c.toUpperCase());
+
   return (
     <div className="min-h-screen flex flex-col">
+      {/* Header */}
       <header className="border-b border-border bg-background/50 backdrop-blur shrink-0">
         <div className="max-w-full mx-auto px-4 py-3 flex items-center justify-between">
           <div className="flex items-center gap-4">
@@ -73,35 +128,94 @@ export default function ResultsPage() {
               <ArrowLeft className="h-4 w-4" />
               Project
             </Button>
-            <h1 className="text-lg font-semibold">Simulation Results</h1>
+            <div className="flex items-center gap-2">
+              <h1 className="text-lg font-semibold">
+                {simMeta?.name || "Simulation Results"}
+              </h1>
+              {strategyLabel && (
+                <Badge variant="secondary" className="text-xs">
+                  {strategyLabel}
+                </Badge>
+              )}
+            </div>
           </div>
+
+          {/* Export Dropdown */}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" size="sm">
+                <Download className="h-4 w-4 mr-1.5" />
+                Export
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem
+                onClick={() => timeseries && exportTimeseriesCSV(timeseries, simId)}
+                disabled={!timeseries}
+              >
+                Timeseries CSV
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onClick={() => economics && exportEconomicsCSV(economics, simId)}
+                disabled={!economics}
+              >
+                Economics CSV
+              </DropdownMenuItem>
+              {networkData && (
+                <DropdownMenuItem
+                  onClick={() => exportNetworkCSV(networkData, simId)}
+                >
+                  Network CSV
+                </DropdownMenuItem>
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </header>
 
+      {/* Summary Header */}
+      {economics && timeseries && (
+        <ResultsSummary
+          economics={economics}
+          timeseries={timeseries}
+          networkData={networkData}
+        />
+      )}
+
+      {/* Tabs */}
       <Tabs defaultValue="timeseries" className="flex-1 flex flex-col">
         <div className="border-b border-border bg-background/30 backdrop-blur px-4">
           <TabsList className="bg-transparent h-auto p-0 gap-1">
             <TabsTrigger
               value="timeseries"
-              className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground rounded-lg px-4 py-1.5 text-sm"
+              className="data-[state=active]:bg-transparent data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:shadow-none rounded-none px-4 py-2.5 text-sm"
             >
               <Activity className="h-4 w-4 mr-1.5" />
               Time Series
             </TabsTrigger>
             <TabsTrigger
               value="economics"
-              className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground rounded-lg px-4 py-1.5 text-sm"
+              className="data-[state=active]:bg-transparent data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:shadow-none rounded-none px-4 py-2.5 text-sm"
             >
               <DollarSign className="h-4 w-4 mr-1.5" />
               Economics
             </TabsTrigger>
             <TabsTrigger
               value="breakdown"
-              className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground rounded-lg px-4 py-1.5 text-sm"
+              className="data-[state=active]:bg-transparent data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:shadow-none rounded-none px-4 py-2.5 text-sm"
             >
               <BarChart3 className="h-4 w-4 mr-1.5" />
               Energy Breakdown
             </TabsTrigger>
+            {networkData && (
+              <TabsTrigger
+                value="network"
+                className="data-[state=active]:bg-transparent data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:shadow-none rounded-none px-4 py-2.5 text-sm"
+              >
+                <Network className="h-4 w-4 mr-1.5" />
+                Network
+              </TabsTrigger>
+            )}
           </TabsList>
         </div>
 
@@ -117,6 +231,11 @@ export default function ResultsPage() {
               <EnergyBreakdown timeseries={timeseries} economics={economics} />
             )}
           </TabsContent>
+          {networkData && (
+            <TabsContent value="network" className="mt-0">
+              <NetworkResultsPanel data={networkData} />
+            </TabsContent>
+          )}
         </div>
       </Tabs>
     </div>

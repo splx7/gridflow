@@ -461,3 +461,31 @@ export interface PowerFlowResult {
   short_circuit: Record<string, ShortCircuitBus>;
   summary: PowerFlowSummary;
 }
+
+// Network simulation results (from completed simulation)
+export interface NetworkResultsData {
+  power_flow_summary: {
+    mode: string;
+    hours_analyzed: number;
+    converged_count: number;
+    min_voltage_pu: number;
+    max_voltage_pu: number;
+    worst_voltage_bus: string;
+    max_branch_loading_pct: number;
+    total_losses_pct: number;
+    total_losses_kw: number;
+    voltage_violations_count: number;
+    thermal_violations_count: number;
+    short_circuit: Record<string, { i_sc_ka: number; s_sc_mva: number }>;
+    branch_flows: Array<{
+      hour: number;
+      flows: Array<{
+        branch_name: string;
+        from_p_kw: number;
+        loss_kw: number;
+        loading_pct: number;
+      }>;
+    }>;
+  };
+  ts_bus_voltages: Record<string, number[]>;
+}
