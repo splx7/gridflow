@@ -89,6 +89,7 @@ class ComponentCreate(BaseModel):
 class ComponentUpdate(BaseModel):
     name: str | None = Field(default=None, max_length=255)
     config: dict | None = None
+    bus_id: uuid.UUID | None = None
 
 
 class ComponentResponse(BaseModel):
@@ -97,6 +98,7 @@ class ComponentResponse(BaseModel):
     component_type: str
     name: str
     config: dict
+    bus_id: uuid.UUID | None = None
     created_at: datetime
     updated_at: datetime
 

@@ -2,6 +2,8 @@ import axios, { AxiosError, AxiosInstance, InternalAxiosRequestConfig } from "ax
 import type {
   AdvisorRequest,
   AdvisorResponse,
+  AutoGenerateRequest,
+  AutoGenerateResponse,
   Branch,
   BranchCreate,
   Bus,
@@ -172,7 +174,7 @@ export async function createComponent(
 export async function updateComponent(
   projectId: string,
   componentId: string,
-  body: { name?: string; config?: Record<string, unknown> }
+  body: { name?: string; config?: Record<string, unknown>; bus_id?: string | null }
 ): Promise<Component> {
   const { data } = await api.patch(
     `/projects/${projectId}/components/${componentId}`,
@@ -431,6 +433,18 @@ export async function getNetworkResults(
 ): Promise<{ power_flow_summary: Record<string, unknown>; ts_bus_voltages: Record<string, number[]> }> {
   const { data } = await api.get(
     `/simulations/${simulationId}/results/network`
+  );
+  return data;
+}
+
+// Network Auto-Generate
+export async function autoGenerateNetwork(
+  projectId: string,
+  body?: AutoGenerateRequest
+): Promise<AutoGenerateResponse> {
+  const { data } = await api.post(
+    `/projects/${projectId}/network/auto-generate`,
+    body || {}
   );
   return data;
 }

@@ -79,13 +79,26 @@ def run_simulation(self, simulation_id: str) -> dict:
                     cfg.setdefault("longitude", project.longitude)
                 elif comp.component_type == "diesel_generator":
                     # Engine expects fuel_curve dict and fuel_price
-                    if "fuel_curve_a" in cfg:
+                    if "fuel_curve_a0" in cfg:
+                        cfg["fuel_curve"] = {
+                            "a0": cfg.pop("fuel_curve_a0"),
+                            "a1": cfg.pop("fuel_curve_a1", 0.246),
+                        }
+                    elif "fuel_curve_a" in cfg:
                         cfg["fuel_curve"] = {
                             "a0": cfg.pop("fuel_curve_a"),
                             "a1": cfg.pop("fuel_curve_b", 0.246),
                         }
                     if "fuel_price_per_liter" in cfg and "fuel_price" not in cfg:
                         cfg["fuel_price"] = cfg.pop("fuel_price_per_liter")
+                elif comp.component_type == "grid_connection":
+                    # Engine expects tariff with buy_rate/sell_rate
+                    if "buy_rate" in cfg and "tariff" not in cfg:
+                        cfg["tariff"] = {
+                            "type": "flat",
+                            "buy_rate": cfg.get("buy_rate", 0.12),
+                            "sell_rate": cfg.get("sell_rate", 0.05),
+                        }
                 component_configs[comp.component_type] = cfg
 
             # Run simulation engine

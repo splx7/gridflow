@@ -7,10 +7,25 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { useProjectStore } from "@/stores/project-store";
 import { getErrorMessage } from "@/lib/api";
-import type { Bus, Branch, PowerFlowResult } from "@/types";
-import { Trash2 } from "lucide-react";
+import type { Bus, Branch, Component as GridComponent, PowerFlowResult } from "@/types";
+import { Trash2, X, Sun, Wind, Battery, Fuel, Plug } from "lucide-react";
+
+const COMPONENT_ICONS: Record<string, typeof Sun> = {
+  solar_pv: Sun,
+  wind_turbine: Wind,
+  battery: Battery,
+  diesel_generator: Fuel,
+  grid_connection: Plug,
+};
 
 interface BusDetailPanelProps {
   projectId: string;
@@ -34,6 +49,7 @@ export default function BusDetailPanel({
     removeBus,
     updateBranch,
     removeBranch,
+    updateComponent,
   } = useProjectStore();
 
   const selectedBus = buses.find((b) => b.id === selectedBusId);
@@ -44,8 +60,10 @@ export default function BusDetailPanel({
       <BusEditor
         projectId={projectId}
         bus={selectedBus}
+        components={components}
         powerFlowResult={powerFlowResult}
         onUpdate={updateBus}
+        onUpdateComponent={updateComponent}
         onDelete={async () => {
           await removeBus(projectId, selectedBus.id);
           toast.success(`Deleted ${selectedBus.name}`);
@@ -148,14 +166,18 @@ export default function BusDetailPanel({
 function BusEditor({
   projectId,
   bus,
+  components,
   powerFlowResult,
   onUpdate,
+  onUpdateComponent,
   onDelete,
 }: {
   projectId: string;
   bus: Bus;
+  components: GridComponent[];
   powerFlowResult: PowerFlowResult | null;
   onUpdate: (projectId: string, busId: string, body: Record<string, unknown>) => Promise<unknown>;
+  onUpdateComponent: (projectId: string, componentId: string, body: { bus_id?: string | null }) => Promise<unknown>;
   onDelete: () => void;
 }) {
   const [name, setName] = useState(bus.name);
@@ -163,6 +185,27 @@ function BusEditor({
 
   const voltage = powerFlowResult?.bus_voltages[bus.name];
   const sc = powerFlowResult?.short_circuit[bus.name];
+
+  const assignedComponents = components.filter((c) => c.bus_id === bus.id);
+  const unassignedComponents = components.filter((c) => !c.bus_id);
+
+  const handleAssign = async (componentId: string) => {
+    try {
+      await onUpdateComponent(projectId, componentId, { bus_id: bus.id });
+      toast.success("Component assigned to bus");
+    } catch (err) {
+      toast.error(getErrorMessage(err));
+    }
+  };
+
+  const handleUnassign = async (componentId: string) => {
+    try {
+      await onUpdateComponent(projectId, componentId, { bus_id: null });
+      toast.success("Component unassigned from bus");
+    } catch (err) {
+      toast.error(getErrorMessage(err));
+    }
+  };
 
   return (
     <div className="p-4 space-y-4">
@@ -240,6 +283,59 @@ function BusEditor({
         >
           {saving ? "Saving..." : "Save Changes"}
         </Button>
+
+        {/* Component assignment section */}
+        <div className="mt-3 pt-3 border-t border-border">
+          <Label className="text-xs">Assigned Components</Label>
+          {assignedComponents.length === 0 ? (
+            <p className="text-xs text-muted-foreground mt-1">No components assigned</p>
+          ) : (
+            <div className="space-y-1.5 mt-2">
+              {assignedComponents.map((c) => {
+                const Icon = COMPONENT_ICONS[c.component_type] || Plug;
+                return (
+                  <div
+                    key={c.id}
+                    className="flex items-center justify-between text-xs bg-muted/50 rounded px-2 py-1.5"
+                  >
+                    <div className="flex items-center gap-1.5">
+                      <Icon className="h-3 w-3 text-muted-foreground" />
+                      <span>{c.name}</span>
+                    </div>
+                    <button
+                      onClick={() => handleUnassign(c.id)}
+                      className="text-muted-foreground hover:text-red-400 transition-colors"
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+          {unassignedComponents.length > 0 && (
+            <div className="mt-2">
+              <Select onValueChange={handleAssign}>
+                <SelectTrigger className="h-8 text-xs">
+                  <SelectValue placeholder="Assign component..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {unassignedComponents.map((c) => {
+                    const Icon = COMPONENT_ICONS[c.component_type] || Plug;
+                    return (
+                      <SelectItem key={c.id} value={c.id} className="text-xs">
+                        <div className="flex items-center gap-1.5">
+                          <Icon className="h-3 w-3" />
+                          {c.name}
+                        </div>
+                      </SelectItem>
+                    );
+                  })}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );

@@ -3,6 +3,8 @@ import type {
   AdvisorRequest,
   AdvisorResponse,
   AdvisorRecommendation,
+  AutoGenerateRequest,
+  AutoGenerateResponse,
   Branch,
   BranchCreate,
   Bus,
@@ -11,6 +13,7 @@ import type {
   LoadAllocation,
   LoadAllocationCreate,
   LoadProfile,
+  NetworkRecommendation,
   PowerFlowResult,
   Project,
   ProjectCreate,
@@ -41,6 +44,8 @@ interface ProjectState {
   loadAllocations: LoadAllocation[];
   powerFlowResult: PowerFlowResult | null;
   powerFlowLoading: boolean;
+  networkRecommendations: NetworkRecommendation[];
+  autoGenerateLoading: boolean;
 
   // Projects
   fetchProjects: () => Promise<void>;
@@ -63,7 +68,7 @@ interface ProjectState {
   updateComponent: (
     projectId: string,
     componentId: string,
-    body: { name?: string; config?: Record<string, unknown> }
+    body: { name?: string; config?: Record<string, unknown>; bus_id?: string | null }
   ) => Promise<Component>;
 
   // Weather
@@ -114,6 +119,8 @@ interface ProjectState {
   removeLoadAllocation: (projectId: string, allocationId: string) => Promise<void>;
   runPowerFlow: (projectId: string) => Promise<PowerFlowResult>;
   clearPowerFlow: () => void;
+  autoGenerateNetwork: (projectId: string, body?: AutoGenerateRequest) => Promise<AutoGenerateResponse>;
+  clearNetworkRecommendations: () => void;
 }
 
 export const useProjectStore = create<ProjectState>((set, get) => ({
@@ -133,6 +140,8 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   loadAllocations: [],
   powerFlowResult: null,
   powerFlowLoading: false,
+  networkRecommendations: [],
+  autoGenerateLoading: false,
 
   fetchProjects: async () => {
     set({ isLoading: true });
@@ -347,4 +356,34 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   },
 
   clearPowerFlow: () => set({ powerFlowResult: null }),
+
+  autoGenerateNetwork: async (projectId, body) => {
+    set({ autoGenerateLoading: true });
+    try {
+      const result = await api.autoGenerateNetwork(projectId, body);
+      set({
+        buses: result.buses,
+        branches: result.branches,
+        loadAllocations: result.load_allocations,
+        networkRecommendations: result.recommendations,
+        autoGenerateLoading: false,
+      });
+      // Refresh project (network_mode changed) and components (bus_id updated)
+      const [project, components] = await Promise.all([
+        api.getProject(projectId),
+        api.listComponents(projectId),
+      ]);
+      set((s) => ({
+        currentProject: project,
+        projects: s.projects.map((p) => (p.id === projectId ? project : p)),
+        components,
+      }));
+      return result;
+    } catch {
+      set({ autoGenerateLoading: false });
+      throw new Error("Auto-generate network failed");
+    }
+  },
+
+  clearNetworkRecommendations: () => set({ networkRecommendations: [] }),
 }));

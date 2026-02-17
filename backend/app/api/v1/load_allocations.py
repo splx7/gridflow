@@ -52,18 +52,35 @@ async def create_load_allocation(
     if not bus.scalar_one_or_none():
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Bus not found in project")
 
-    # Validate load profile belongs to project
-    lp = await db.execute(
-        select(LoadProfile).where(
-            LoadProfile.id == body.load_profile_id, LoadProfile.project_id == project_id
+    # Auto-select load profile if not provided
+    load_profile_id = body.load_profile_id
+    if load_profile_id is None:
+        lp_result = await db.execute(
+            select(LoadProfile).where(LoadProfile.project_id == project_id)
+            .order_by(LoadProfile.created_at.desc()).limit(1)
         )
-    )
-    if not lp.scalar_one_or_none():
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, detail="Load profile not found in project"
+        lp = lp_result.scalar_one_or_none()
+        if not lp:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="No load profiles in project. Create one first or provide load_profile_id.",
+            )
+        load_profile_id = lp.id
+    else:
+        # Validate load profile belongs to project
+        lp = await db.execute(
+            select(LoadProfile).where(
+                LoadProfile.id == load_profile_id, LoadProfile.project_id == project_id
+            )
         )
+        if not lp.scalar_one_or_none():
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST, detail="Load profile not found in project"
+            )
 
-    allocation = LoadAllocation(project_id=project_id, **body.model_dump())
+    alloc_data = body.model_dump()
+    alloc_data["load_profile_id"] = load_profile_id
+    allocation = LoadAllocation(project_id=project_id, **alloc_data)
     db.add(allocation)
     await db.commit()
     await db.refresh(allocation)

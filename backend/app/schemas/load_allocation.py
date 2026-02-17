@@ -5,7 +5,7 @@ from pydantic import BaseModel, Field
 
 
 class LoadAllocationCreate(BaseModel):
-    load_profile_id: uuid.UUID
+    load_profile_id: uuid.UUID | None = None
     bus_id: uuid.UUID
     name: str = Field(max_length=255)
     fraction: float = Field(default=1.0, ge=0.0, le=1.0)
@@ -23,7 +23,7 @@ class LoadAllocationUpdate(BaseModel):
 class LoadAllocationResponse(BaseModel):
     id: uuid.UUID
     project_id: uuid.UUID
-    load_profile_id: uuid.UUID
+    load_profile_id: uuid.UUID | None
     bus_id: uuid.UUID
     name: str
     fraction: float

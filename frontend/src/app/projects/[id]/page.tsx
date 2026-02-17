@@ -68,6 +68,9 @@ export default function ProjectPage() {
     systemHealth,
     fetchBuses,
     fetchBranches,
+    autoGenerateNetwork,
+    autoGenerateLoading,
+    runPowerFlow,
   } = useProjectStore();
 
   const [activeTab, setActiveTab] = useState<string>("advisor");
@@ -308,25 +311,37 @@ export default function ProjectPage() {
                     components={components}
                     onSelect={setSelectedComponentId}
                   />
-                  {/* Enable Network Mode button */}
+                  {/* Enable Network Mode button — auto-generates SLD */}
                   <div className="absolute bottom-4 left-4 z-10">
                     <Button
                       variant="outline"
                       size="sm"
                       className="bg-background/80 backdrop-blur-sm"
+                      disabled={autoGenerateLoading}
                       onClick={async () => {
                         try {
-                          await updateProject(projectId, {
-                            network_mode: "multi_bus",
-                          });
-                          toast.success("Network mode enabled — add buses and branches to build your SLD");
+                          const result = await autoGenerateNetwork(projectId);
+                          toast.success(
+                            `SLD generated: ${result.buses.length} buses, ${result.branches.length} branches`
+                          );
+                          // Run power flow in background
+                          runPowerFlow(projectId).catch(() => {});
                         } catch (err) {
                           toast.error(getErrorMessage(err));
                         }
                       }}
                     >
-                      <Network className="h-4 w-4 mr-2" />
-                      Enable Network Mode
+                      {autoGenerateLoading ? (
+                        <>
+                          <div className="h-4 w-4 mr-2 animate-spin border-2 border-current border-t-transparent rounded-full" />
+                          Generating...
+                        </>
+                      ) : (
+                        <>
+                          <Network className="h-4 w-4 mr-2" />
+                          Enable Network Mode
+                        </>
+                      )}
                     </Button>
                   </div>
                 </div>

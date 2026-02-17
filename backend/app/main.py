@@ -8,6 +8,7 @@ from app.config import settings
 from app.api.v1 import (
     auth, projects, components, simulations, weather, comparisons, advisor,
     buses, branches, load_allocations, power_flow, cable_library,
+    network_generate,
 )
 from app.models.database import get_engine
 
@@ -51,6 +52,9 @@ def create_app() -> FastAPI:
     )
     application.include_router(power_flow.router, prefix="/api/v1/projects", tags=["power-flow"])
     application.include_router(cable_library.router, prefix="/api/v1", tags=["cable-library"])
+    application.include_router(
+        network_generate.router, prefix="/api/v1/projects", tags=["network-generate"]
+    )
 
     @application.get("/health")
     async def health_check() -> dict[str, str]:

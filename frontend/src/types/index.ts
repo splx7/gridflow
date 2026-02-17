@@ -372,6 +372,28 @@ export interface TransformerSpec {
   load_loss_kw: number;
 }
 
+// Network auto-generate types
+export interface NetworkRecommendation {
+  level: "info" | "warning" | "error";
+  code: string;
+  message: string;
+  suggestion: string;
+}
+
+export interface AutoGenerateResponse {
+  buses: Bus[];
+  branches: Branch[];
+  load_allocations: LoadAllocation[];
+  recommendations: NetworkRecommendation[];
+}
+
+export interface AutoGenerateRequest {
+  mv_voltage_kv?: number;
+  lv_voltage_kv?: number;
+  cable_material?: "Cu" | "Al";
+  cable_length_km?: number;
+}
+
 // Power flow result types
 export interface BranchFlowSummary {
   from_kw: number;

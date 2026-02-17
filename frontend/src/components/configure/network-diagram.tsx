@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ReactFlow,
   Background,
@@ -22,6 +22,8 @@ import CableEdgeComponent from "./cable-edge";
 import TransformerEdgeComponent from "./transformer-edge";
 import NetworkToolbar from "./network-toolbar";
 import BusDetailPanel from "./bus-detail-panel";
+import ComponentPanel from "./component-panel";
+import NetworkRecommendationsBar from "./network-recommendations";
 import type { Bus, Branch, Component as GridComponent } from "@/types";
 
 const nodeTypes: NodeTypes = {
@@ -80,18 +82,42 @@ export default function NetworkDiagram({
     buses,
     branches,
     powerFlowResult,
+    networkRecommendations,
     fetchBuses,
     fetchBranches,
     updateBus,
+    runPowerFlow,
   } = useProjectStore();
 
   const [selectedBusId, setSelectedBusId] = useState<string | null>(null);
   const [selectedBranchId, setSelectedBranchId] = useState<string | null>(null);
+  const [rightTab, setRightTab] = useState<"network" | "components">("network");
+  const [selectedComponentId, setSelectedComponentId] = useState<string | null>(null);
+
+  // Auto-switch to network tab when bus/branch is selected
+  useEffect(() => {
+    if (selectedBusId || selectedBranchId) {
+      setRightTab("network");
+    }
+  }, [selectedBusId, selectedBranchId]);
 
   useEffect(() => {
     fetchBuses(projectId);
     fetchBranches(projectId);
   }, [projectId, fetchBuses, fetchBranches]);
+
+  // Auto power-flow on structure changes (debounced)
+  const prevStructureRef = useRef<string>("");
+  useEffect(() => {
+    const structureKey = `${buses.length}-${branches.length}`;
+    if (prevStructureRef.current && prevStructureRef.current !== structureKey && buses.length > 0) {
+      const timer = setTimeout(() => {
+        runPowerFlow(projectId).catch(() => {});
+      }, 1500);
+      return () => clearTimeout(timer);
+    }
+    prevStructureRef.current = structureKey;
+  }, [buses.length, branches.length, projectId, runPowerFlow]);
 
   const positions = useMemo(() => autolayout(buses, branches), [buses, branches]);
 
@@ -259,6 +285,10 @@ export default function NetworkDiagram({
 
   return (
     <div className="flex-1 flex flex-col">
+      <NetworkRecommendationsBar
+        recommendations={networkRecommendations}
+        powerFlowResult={powerFlowResult}
+      />
       <NetworkToolbar projectId={projectId} />
       <div className="flex-1 flex overflow-hidden">
         <div className="flex-1 relative" style={{ minHeight: "500px" }}>
@@ -285,16 +315,49 @@ export default function NetworkDiagram({
             />
           </ReactFlow>
         </div>
-        <div className="w-80 border-l border-border overflow-y-auto">
-          <BusDetailPanel
-            projectId={projectId}
-            selectedBusId={selectedBusId}
-            selectedBranchId={selectedBranchId}
-            onClose={() => {
-              setSelectedBusId(null);
-              setSelectedBranchId(null);
-            }}
-          />
+        <div className="w-80 border-l border-border flex flex-col">
+          {/* Tab switcher */}
+          <div className="flex border-b border-border shrink-0">
+            <button
+              className={`flex-1 px-3 py-2 text-xs font-medium transition-colors ${
+                rightTab === "network"
+                  ? "text-foreground border-b-2 border-primary"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+              onClick={() => setRightTab("network")}
+            >
+              Network
+            </button>
+            <button
+              className={`flex-1 px-3 py-2 text-xs font-medium transition-colors ${
+                rightTab === "components"
+                  ? "text-foreground border-b-2 border-primary"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+              onClick={() => setRightTab("components")}
+            >
+              Components
+            </button>
+          </div>
+          <div className="flex-1 overflow-y-auto">
+            {rightTab === "network" ? (
+              <BusDetailPanel
+                projectId={projectId}
+                selectedBusId={selectedBusId}
+                selectedBranchId={selectedBranchId}
+                onClose={() => {
+                  setSelectedBusId(null);
+                  setSelectedBranchId(null);
+                }}
+              />
+            ) : (
+              <ComponentPanel
+                projectId={projectId}
+                selectedId={selectedComponentId}
+                onSelect={setSelectedComponentId}
+              />
+            )}
+          </div>
         </div>
       </div>
     </div>
