@@ -71,23 +71,30 @@ def analyze_power_flow(
         loading = tv.get("loading_pct", 0)
         br_name = tv.get("branch_name", "Unknown")
 
-        # Find the branch config to suggest upgrade
+        # Find branch type and config
         branch_cfg = None
+        branch_type = "cable"
         for br in branches:
             if br.get("name") == br_name:
                 branch_cfg = br.get("config", {})
+                branch_type = br.get("branch_type", "cable")
                 break
 
-        suggestion = "Upgrade cable to higher ampacity rating"
-        if branch_cfg:
-            current_ampacity = branch_cfg.get("ampacity_a", 0)
-            if current_ampacity > 0:
-                needed = current_ampacity * (loading / 100) * 1.25
-                vc = "lv"  # default
-                upgrades = filter_cables(voltage_class=vc, material=cable_material, min_ampacity=needed)
-                if upgrades:
-                    best = min(upgrades, key=lambda c: c.ampacity_a)
-                    suggestion = f"Upgrade to {best.name} ({best.ampacity_a}A rated)"
+        if branch_type == "inverter":
+            rated_kw = branch_cfg.get("rated_power_kw", 0) if branch_cfg else 0
+            needed_kw = rated_kw * (loading / 100) * 1.1
+            suggestion = f"Increase inverter capacity from {rated_kw:.0f} kW to ≥{needed_kw:.0f} kW"
+        else:
+            suggestion = "Upgrade cable to higher ampacity rating"
+            if branch_cfg:
+                current_ampacity = branch_cfg.get("ampacity_a", 0)
+                if current_ampacity > 0:
+                    needed = current_ampacity * (loading / 100) * 1.25
+                    vc = "lv"  # default
+                    upgrades = filter_cables(voltage_class=vc, material=cable_material, min_ampacity=needed)
+                    if upgrades:
+                        best = min(upgrades, key=lambda c: c.ampacity_a)
+                        suggestion = f"Upgrade to {best.name} ({best.ampacity_a}A rated)"
 
         recommendations.append({
             "level": "error" if loading > 120 else "warning",
@@ -106,27 +113,66 @@ def analyze_power_flow(
                 for r in recommendations
             )
             if not already_flagged:
+                # Find branch type for appropriate suggestion
+                br_type = "cable"
+                for br in branches:
+                    if br.get("name") == br_name:
+                        br_type = br.get("branch_type", "cable")
+                        break
+                if br_type == "inverter":
+                    suggestion = "Inverter approaching rated capacity; consider upsizing for thermal headroom"
+                else:
+                    suggestion = "Monitor closely; consider cable upgrade if load grows"
                 recommendations.append({
                     "level": "warning",
                     "code": "THERMAL_APPROACHING",
                     "message": f"Branch '{br_name}' at {loading:.0f}% loading — approaching thermal limit",
-                    "suggestion": "Monitor closely; consider cable upgrade if load grows",
+                    "suggestion": suggestion,
                 })
 
-    # Total losses check
+    # Total losses check — separate inverter conversion losses from cable losses
     total_losses_pct = summary.get("total_losses_pct", 0)
-    if total_losses_pct > 5:
+    total_loss_kw = summary.get("total_losses_kw", 0)
+
+    # Sum inverter losses from branch flows
+    inverter_loss_kw = 0.0
+    for br_name, flow in branch_flows.items():
+        for br in branches:
+            if br.get("name") == br_name and br.get("branch_type") == "inverter":
+                inverter_loss_kw += flow.get("loss_kw", 0)
+                break
+
+    cable_loss_kw = total_loss_kw - inverter_loss_kw
+    # Only flag cable/transformer losses against thresholds
+    if total_loss_kw > 0:
+        cable_losses_pct = total_losses_pct * (cable_loss_kw / total_loss_kw)
+    else:
+        cable_losses_pct = 0.0
+
+    if inverter_loss_kw > 0 and total_loss_kw > 0:
+        inv_pct = total_losses_pct * (inverter_loss_kw / total_loss_kw)
+        recommendations.append({
+            "level": "info",
+            "code": "INVERTER_LOSSES",
+            "message": (
+                f"Inverter conversion losses: {inverter_loss_kw:.1f} kW "
+                f"({inv_pct:.1f}% of generation) — expected for power electronics"
+            ),
+            "suggestion": "Inverter losses are inherent to DC/AC conversion and cannot be reduced by cable upgrades",
+        })
+
+    if cable_losses_pct > 5:
         recommendations.append({
             "level": "error",
             "code": "HIGH_LOSSES",
-            "message": f"Total network losses {total_losses_pct:.1f}% exceed 5%",
+            "message": f"Cable/transformer losses {cable_losses_pct:.1f}% exceed 5% (total network: {total_losses_pct:.1f}%)",
             "suggestion": "Review cable sizing across the network; larger cross-sections reduce losses",
         })
-    elif total_losses_pct > 3:
+    elif cable_losses_pct > 3:
         recommendations.append({
             "level": "warning",
             "code": "MODERATE_LOSSES",
-            "message": f"Total network losses {total_losses_pct:.1f}% exceed 3%",
+            "message": f"Cable/transformer losses {cable_losses_pct:.1f}% exceed 3% (total network: {total_losses_pct:.1f}%)",
             "suggestion": "Consider upgrading heavily loaded cables to reduce resistive losses",
         })
 

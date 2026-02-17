@@ -98,20 +98,26 @@ AC_SOURCE_TYPES = {"diesel_generator", "wind_turbine"}
 
 
 def _inverter_capacity_kw(comp: dict) -> float:
-    """Get the inverter AC-side rating for a DC source component."""
+    """Get the inverter AC-side rating for a DC source component.
+
+    When auto-sizing (no explicit inverter_capacity_kw), adds 10% margin
+    for thermal derating and transient headroom.  User-specified values
+    are returned unchanged.
+    """
     cfg = comp.get("config", {})
     ctype = comp.get("component_type", "")
     inv_cap = cfg.get("inverter_capacity_kw")
     if inv_cap is not None and inv_cap > 0:
-        return inv_cap
+        return inv_cap  # User-specified — no margin added
+    # Fallback: DC-side rating + 10% margin
     if ctype == "solar_pv":
-        return cfg.get("capacity_kw", cfg.get("capacity_kwp", 0))
+        return cfg.get("capacity_kw", cfg.get("capacity_kwp", 0)) * 1.1
     if ctype == "battery":
         return max(
             cfg.get("max_charge_rate_kw", 0),
             cfg.get("max_discharge_rate_kw", 0),
-        )
-    return cfg.get("rated_power_kw", 0)
+        ) * 1.1
+    return cfg.get("rated_power_kw", 0) * 1.1
 
 
 def _inverter_efficiency(comp: dict) -> float:
@@ -312,14 +318,20 @@ def generate_radial_topology(
         inv_kw = _inverter_capacity_kw(comp)
         inv_eff = _inverter_efficiency(comp)
 
-        # Create DC bus for this component
+        # Create DC bus for this component.
+        # DC buses use relaxed voltage limits (±20%) because voltage is
+        # controlled by power electronics (MPPT / charge controller),
+        # not passive impedance.
         dc_bus = {
             "name": f"{comp['name']} DC Bus",
             "bus_type": "pq",
             "nominal_voltage_kv": lv_voltage_kv,
             "x_position": dc_bus_x,
             "y_position": 450,
-            "config": {},
+            "config": {
+                "min_voltage_pu": 0.80,
+                "max_voltage_pu": 1.20,
+            },
         }
         dc_bus_idx = len(buses)
         buses.append(dc_bus)

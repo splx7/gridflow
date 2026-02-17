@@ -274,8 +274,14 @@ def _build_result(
         # Loading percent
         loading = 0.0
         if br.rating_mva > 0:
-            max_flow = max(abs(S_ij), abs(S_ji))
-            loading = (max_flow / br.rating_mva) * 100.0
+            if br.branch_type == "inverter":
+                # Inverters: use AC-side power (from_bus = AC bus).
+                # DC-side apparent power is inflated by the impedance-model
+                # voltage rise and does not reflect real thermal stress.
+                loading = (abs(S_ij) / br.rating_mva) * 100.0
+            else:
+                max_flow = max(abs(S_ij), abs(S_ji))
+                loading = (max_flow / br.rating_mva) * 100.0
 
         branch_flows.append(BranchFlowResult(
             branch_index=br.index,
