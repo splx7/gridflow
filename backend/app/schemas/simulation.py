@@ -48,3 +48,8 @@ class EconomicsResponse(BaseModel):
 
 class ComparisonRequest(BaseModel):
     simulation_ids: list[uuid.UUID] = Field(min_length=2, max_length=10)
+
+
+class ScoringRequest(BaseModel):
+    simulation_ids: list[uuid.UUID] = Field(min_length=2, max_length=10)
+    weights: dict[str, float] | None = None
