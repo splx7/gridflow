@@ -291,6 +291,278 @@ def _make_line_chart(
     return _fig_to_buf(fig)
 
 
+def _make_system_block_diagram(components: list[dict]) -> BytesIO | None:
+    """System block diagram showing component interconnections via AC bus."""
+    if not components:
+        return None
+
+    plt = _init_mpl()
+    from matplotlib.patches import FancyBboxPatch, FancyArrowPatch
+
+    fig, ax = plt.subplots(figsize=(7, 4))
+    ax.set_xlim(0, 1)
+    ax.set_ylim(0, 1)
+    ax.set_aspect("equal")
+    ax.axis("off")
+
+    # ── Identify present component types ──
+    has: dict[str, dict] = {}
+    for c in components:
+        ct = c["component_type"]
+        cfg = c.get("config", {})
+        if ct == "solar_pv":
+            cap = cfg.get("capacity_kwp", cfg.get("capacity_kw", "?"))
+            has["pv"] = {"label": f"Solar PV\n{cap} kWp", "cfg": cfg}
+        elif ct == "battery":
+            cap = cfg.get("capacity_kwh", "?")
+            has["battery"] = {"label": f"Battery\n{cap} kWh", "cfg": cfg}
+        elif ct == "diesel_generator":
+            cap = cfg.get("rated_power_kw", "?")
+            has["generator"] = {"label": f"Generator\n{cap} kW", "cfg": cfg}
+        elif ct == "grid_connection":
+            cap = cfg.get("max_import_kw", "?")
+            has["grid"] = {"label": f"Grid\n{cap} kW", "cfg": cfg}
+        elif ct == "wind_turbine":
+            cap = cfg.get("rated_power_kw", "?")
+            has["wind"] = {"label": f"Wind\n{cap} kW", "cfg": cfg}
+        elif ct == "inverter":
+            cap = cfg.get("rated_power_kw", "?")
+            has["inverter"] = {"label": f"Inverter\n{cap} kW", "cfg": cfg}
+
+    # Always show load
+    has["load"] = {"label": "Load", "cfg": {}}
+
+    # ── AC Bus bar (horizontal, center) ──
+    bus_x0, bus_x1, bus_y = 0.28, 0.72, 0.50
+    ax.plot([bus_x0, bus_x1], [bus_y, bus_y], color="#2563eb",
+            linewidth=6, solid_capstyle="round", zorder=5)
+    ax.text((bus_x0 + bus_x1) / 2, bus_y + 0.035, "AC Bus",
+            ha="center", va="bottom", fontsize=9, fontweight="bold",
+            color="#2563eb")
+
+    # ── Component box drawing helper ──
+    box_w, box_h = 0.14, 0.09
+    color_map = {
+        "pv": "#eab308", "wind": "#06b6d4", "battery": "#22c55e",
+        "generator": "#f97316", "grid": "#8b5cf6", "load": "#6b7280",
+        "inverter": "#3b82f6",
+    }
+
+    def _draw_box(cx: float, cy: float, label: str, key: str):
+        clr = color_map.get(key, "#9ca3af")
+        x0 = cx - box_w / 2
+        y0 = cy - box_h / 2
+        box = FancyBboxPatch(
+            (x0, y0), box_w, box_h,
+            boxstyle="round,pad=0.01", facecolor=clr, edgecolor="black",
+            linewidth=0.8, alpha=0.85, zorder=6,
+        )
+        ax.add_patch(box)
+        ax.text(cx, cy, label, ha="center", va="center",
+                fontsize=6.5, fontweight="bold", color="white", zorder=7)
+
+    def _connect(x1: float, y1: float, x2: float, y2: float,
+                 bidirectional: bool = False):
+        style = "Simple,tail_width=1.5,head_width=5,head_length=4"
+        arrow = FancyArrowPatch(
+            (x1, y1), (x2, y2),
+            arrowstyle=("<|-|>" if bidirectional else "-|>"),
+            color="#374151", linewidth=1.2, mutation_scale=8, zorder=4,
+        )
+        ax.add_patch(arrow)
+
+    # ── Place components ──
+    # Generation sources (left side)
+    gen_sources = []
+    if "pv" in has:
+        gen_sources.append(("pv", has["pv"]["label"]))
+    if "wind" in has:
+        gen_sources.append(("wind", has["wind"]["label"]))
+    if "generator" in has:
+        gen_sources.append(("generator", has["generator"]["label"]))
+
+    if len(gen_sources) == 1:
+        positions_left = [0.50]
+    elif len(gen_sources) == 2:
+        positions_left = [0.65, 0.35]
+    else:
+        positions_left = [0.72, 0.50, 0.28]
+
+    for i, (key, label) in enumerate(gen_sources):
+        cy = positions_left[i]
+        cx = 0.10
+        _draw_box(cx, cy, label, key)
+        _connect(cx + box_w / 2, cy, bus_x0, bus_y)
+
+    # Grid (top)
+    if "grid" in has:
+        cx, cy = 0.50, 0.88
+        _draw_box(cx, cy, has["grid"]["label"], "grid")
+        _connect(cx, cy - box_h / 2, cx, bus_y + 0.025, bidirectional=True)
+
+    # Battery (bottom)
+    if "battery" in has:
+        cx, cy = 0.50, 0.12
+        _draw_box(cx, cy, has["battery"]["label"], "battery")
+        _connect(cx, cy + box_h / 2, cx, bus_y - 0.025, bidirectional=True)
+
+    # Load (right side)
+    cx, cy = 0.90, 0.50
+    _draw_box(cx, cy, has["load"]["label"], "load")
+    _connect(bus_x1, bus_y, cx - box_w / 2, cy)
+
+    fig.tight_layout(pad=0.5)
+    return _fig_to_buf(fig)
+
+
+def _make_sld_diagram(
+    buses: list[dict],
+    branches: list[dict],
+    network_data: dict | None = None,
+) -> BytesIO | None:
+    """IEEE-style single-line diagram showing buses and branch connections."""
+    if not buses:
+        return None
+
+    plt = _init_mpl()
+
+    fig, ax = plt.subplots(figsize=(8, max(4, len(buses) * 1.2 + 1)))
+    ax.axis("off")
+
+    # ── Layout: use stored positions or auto-layout vertically ──
+    bus_positions: dict[str, tuple[float, float]] = {}
+    bus_id_to_name: dict[str, str] = {}
+    bus_voltages: dict[str, float] = {}
+
+    has_positions = all(
+        b.get("x_position") is not None and b.get("y_position") is not None
+        for b in buses
+    )
+
+    if has_positions:
+        xs = [b["x_position"] for b in buses]
+        ys = [b["y_position"] for b in buses]
+        x_min, x_max = min(xs), max(xs)
+        y_min, y_max = min(ys), max(ys)
+        x_range = max(x_max - x_min, 1)
+        y_range = max(y_max - y_min, 1)
+        for b in buses:
+            nx = 0.15 + 0.70 * (b["x_position"] - x_min) / x_range
+            ny = 0.85 - 0.70 * (b["y_position"] - y_min) / y_range
+            bus_positions[b["name"]] = (nx, ny)
+            bus_id_to_name[b.get("id", b["name"])] = b["name"]
+            bus_voltages[b["name"]] = b.get("nominal_voltage_kv", 0.4)
+    else:
+        for i, b in enumerate(buses):
+            nx = 0.50
+            ny = 0.85 - i * (0.70 / max(len(buses) - 1, 1))
+            bus_positions[b["name"]] = (nx, ny)
+            bus_id_to_name[b.get("id", b["name"])] = b["name"]
+            bus_voltages[b["name"]] = b.get("nominal_voltage_kv", 0.4)
+
+    # ── Build branch flow lookup from network_data ──
+    flow_lookup: dict[str, dict] = {}
+    if network_data:
+        for snapshot in network_data.get("branch_flows", []):
+            for f in snapshot.get("flows", []):
+                name = f.get("name", "")
+                existing = flow_lookup.get(name)
+                if not existing or f.get("loading_pct", 0) > existing.get(
+                    "loading_pct", 0
+                ):
+                    flow_lookup[name] = f
+
+    # ── Draw buses (thick horizontal lines) ──
+    bus_bar_half = 0.12
+    for name, (bx, by) in bus_positions.items():
+        vkv = bus_voltages.get(name, 0.4)
+        bus_type_str = ""
+        for b in buses:
+            if b["name"] == name:
+                bt = b.get("bus_type", "pq")
+                if bt == "slack":
+                    bus_type_str = " [Slack]"
+                elif bt == "pv":
+                    bus_type_str = " [PV]"
+                break
+
+        ax.plot(
+            [bx - bus_bar_half, bx + bus_bar_half], [by, by],
+            color="#1e40af", linewidth=4, solid_capstyle="butt", zorder=5,
+        )
+        ax.text(
+            bx, by + 0.03, f"{name}{bus_type_str}",
+            ha="center", va="bottom", fontsize=7, fontweight="bold",
+            color="#1e3a5f",
+        )
+        ax.text(
+            bx, by - 0.03, f"{vkv} kV",
+            ha="center", va="top", fontsize=6, color="#6b7280",
+        )
+
+    # ── Draw branches ──
+    for br in branches:
+        from_name = br.get("from_bus", "")
+        to_name = br.get("to_bus", "")
+        if from_name not in bus_positions or to_name not in bus_positions:
+            continue
+
+        fx, fy = bus_positions[from_name]
+        tx, ty = bus_positions[to_name]
+        br_type = br.get("branch_type", "cable")
+        br_name = br.get("name", "")
+
+        mid_x = (fx + tx) / 2
+        mid_y = (fy + ty) / 2
+
+        if br_type == "transformer":
+            # IEC transformer symbol: two overlapping circles
+            r = 0.025
+            offset = r * 0.6
+            ax.plot([fx, mid_x], [fy, mid_y + offset], color="#374151",
+                    linewidth=1, zorder=3)
+            ax.plot([mid_x, tx], [mid_y - offset, ty], color="#374151",
+                    linewidth=1, zorder=3)
+            circle1 = plt.Circle((mid_x, mid_y + offset), r,
+                                 fill=False, edgecolor="#374151",
+                                 linewidth=1.2, zorder=4)
+            circle2 = plt.Circle((mid_x, mid_y - offset), r,
+                                 fill=False, edgecolor="#374151",
+                                 linewidth=1.2, zorder=4)
+            ax.add_patch(circle1)
+            ax.add_patch(circle2)
+            ax.text(mid_x + 0.04, mid_y, "Tx", fontsize=6,
+                    color="#374151", va="center")
+        else:
+            # Cable/line: simple line
+            ax.plot([fx, tx], [fy, ty], color="#374151",
+                    linewidth=1, zorder=3)
+
+        # Branch label
+        label_parts = [br_name]
+        flow = flow_lookup.get(br_name)
+        if flow:
+            p_kw = flow.get("power_kw", 0)
+            loading = flow.get("loading_pct", 0)
+            label_parts.append(f"{p_kw:.0f} kW ({loading:.0f}%)")
+
+        label_text = "\n".join(label_parts)
+        # Offset label to the side to avoid overlap with line
+        label_offset_x = 0.06
+        ax.text(mid_x + label_offset_x, mid_y, label_text, fontsize=5.5,
+                color="#6b7280", va="center", ha="left",
+                bbox=dict(boxstyle="round,pad=0.15", facecolor="white",
+                          edgecolor="#e5e7eb", alpha=0.9),
+                zorder=6)
+
+    ax.set_xlim(0, 1)
+    ax.set_ylim(0, 1)
+    ax.set_title("Single Line Diagram", fontsize=10, fontweight="bold",
+                 pad=10)
+    fig.tight_layout(pad=0.5)
+    return _fig_to_buf(fig)
+
+
 # ══════════════════════════════════════════════════════════════════════
 # Canvas Callbacks (header / footer / page numbers)
 # ══════════════════════════════════════════════════════════════════════
@@ -571,6 +843,16 @@ def _build_executive_summary(
 def _build_system_config(styles, components: list[dict]) -> list:
     elems: list = []
     elems.append(Paragraph("System Configuration", styles["SectionHeader"]))
+
+    # System block diagram (always shown if components exist)
+    try:
+        block_buf = _make_system_block_diagram(components)
+        if block_buf:
+            elems.append(Paragraph("System Block Diagram", styles["SubSection"]))
+            elems.append(Image(block_buf, width=170 * mm, height=97 * mm))
+            elems.append(Spacer(1, 4 * mm))
+    except Exception:
+        pass
 
     type_order = [
         "solar_pv", "battery", "diesel_generator",
@@ -1132,13 +1414,33 @@ def _build_cost_analysis(styles, economics: dict) -> list:
 # ══════════════════════════════════════════════════════════════════════
 
 def _build_network_analysis(
-    styles, network_data: dict | None, ts_bus_voltages: dict | None,
+    styles,
+    network_data: dict | None,
+    ts_bus_voltages: dict | None,
+    buses: list[dict] | None = None,
+    branches: list[dict] | None = None,
 ) -> list:
     if not network_data:
         return []
 
     elems: list = []
     elems.append(Paragraph("Network Analysis", styles["SectionHeader"]))
+
+    # Single-line diagram (conditional on buses/branches existing)
+    if buses and branches:
+        try:
+            sld_buf = _make_sld_diagram(buses, branches, network_data)
+            if sld_buf:
+                elems.append(
+                    Paragraph("Single Line Diagram", styles["SubSection"])
+                )
+                img_h = max(100, len(buses) * 30 + 25)
+                elems.append(Image(
+                    sld_buf, width=170 * mm, height=min(img_h, 160) * mm,
+                ))
+                elems.append(Spacer(1, 4 * mm))
+        except Exception:
+            pass
 
     hrs = network_data.get("hours_analyzed", 0)
     data = [
@@ -1537,6 +1839,8 @@ def generate_pdf_report(
     network_data: dict | None = None,
     ts_bus_voltages: dict | None = None,
     sensitivity_results: dict | None = None,
+    buses: list[dict] | None = None,
+    branches: list[dict] | None = None,
 ) -> BytesIO:
     """Generate a professional PDF report and return as BytesIO buffer."""
     economics = economics or {}
@@ -1601,7 +1905,10 @@ def generate_pdf_report(
 
     # 10. Network Analysis (conditional)
     elements.extend(
-        _build_network_analysis(styles, network_data, ts_bus_voltages)
+        _build_network_analysis(
+            styles, network_data, ts_bus_voltages,
+            buses=buses, branches=branches,
+        )
     )
 
     # 11. Sensitivity Analysis (conditional)

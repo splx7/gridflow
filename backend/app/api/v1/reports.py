@@ -15,6 +15,8 @@ from app.models.project import Project
 from app.models.simulation import Simulation, SimulationResult
 from app.models.component import Component
 from app.models.user import User
+from app.models.bus import Bus
+from app.models.branch import Branch
 
 router = APIRouter()
 
@@ -224,6 +226,40 @@ async def download_pdf_report(
         for c in comp_result.scalars().all()
     ]
 
+    # Load buses
+    bus_result = await db.execute(
+        select(Bus).where(Bus.project_id == project.id)
+    )
+    buses = [
+        {
+            "name": b.name,
+            "bus_type": b.bus_type,
+            "nominal_voltage_kv": b.nominal_voltage_kv,
+            "x_position": b.x_position,
+            "y_position": b.y_position,
+            "config": b.config,
+            "id": str(b.id),
+        }
+        for b in bus_result.scalars().all()
+    ]
+
+    # Load branches (with from/to bus names for SLD labels)
+    branch_result = await db.execute(
+        select(Branch)
+        .options(selectinload(Branch.from_bus), selectinload(Branch.to_bus))
+        .where(Branch.project_id == project.id)
+    )
+    branches_data = [
+        {
+            "name": br.name,
+            "branch_type": br.branch_type,
+            "from_bus": br.from_bus.name,
+            "to_bus": br.to_bus.name,
+            "config": br.config,
+        }
+        for br in branch_result.scalars().all()
+    ]
+
     economics = {
         "npc": sr.npc,
         "lcoe": sr.lcoe,
@@ -266,6 +302,8 @@ async def download_pdf_report(
         network_data=sr.power_flow_summary,
         ts_bus_voltages=sr.ts_bus_voltages,
         sensitivity_results=sr.sensitivity_results,
+        buses=buses if buses else None,
+        branches=branches_data if branches_data else None,
     )
 
     filename = f"gridflow_{project.name}_{sim.name}.pdf".replace(" ", "_")
