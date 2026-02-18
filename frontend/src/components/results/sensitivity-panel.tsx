@@ -81,25 +81,32 @@ export default function SensitivityPanel({
     setRunning(true);
     try {
       await runSensitivity(simulationId, DEFAULT_VARIABLES);
-      toast.info("Sensitivity analysis started. This may take a few minutes...");
+      toast.info("Sensitivity analysis started. This may take a minute...");
 
-      // Poll for results
+      // Poll for results (120 attempts x 3s = 6 min max)
       const poll = async (attempts: number): Promise<SensitivityResult | null> => {
         if (attempts <= 0) return null;
-        await new Promise((r) => setTimeout(r, 5000));
+        await new Promise((r) => setTimeout(r, 3000));
         try {
-          return await getSensitivityResults(simulationId);
+          const res = await getSensitivityResults(simulationId);
+          // Backend writes {"error": "..."} on failure
+          if (res && "error" in res) {
+            toast.error("Sensitivity analysis failed: " + (res as Record<string, string>).error);
+            return null;
+          }
+          return res;
         } catch {
           return poll(attempts - 1);
         }
       };
 
-      const result = await poll(60); // Poll up to 5 minutes
+      const result = await poll(120);
       if (result) {
         setData(result);
         toast.success("Sensitivity analysis complete");
-      } else {
-        toast.error("Sensitivity analysis timed out. Check back later.");
+      } else if (!result) {
+        // Only show timeout if no error toast was already shown
+        toast.error("Sensitivity analysis timed out. Try again or check server logs.");
       }
     } catch (err) {
       toast.error("Failed to start sensitivity: " + getErrorMessage(err));

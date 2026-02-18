@@ -22,9 +22,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { ChevronDown, ChevronRight, Loader2, Play, ShieldCheck, ShieldAlert } from "lucide-react";
+import { AlertTriangle, ChevronDown, ChevronRight, Info, Loader2, Play, ShieldCheck, ShieldAlert, Zap } from "lucide-react";
 import { toast } from "sonner";
-import type { NetworkResultsData, ContingencyAnalysisResult, GridCodeSummary } from "@/types";
+import type { NetworkResultsData, ContingencyAnalysisResult, ContingencyItem, GridCodeSummary } from "@/types";
 import { runContingencyAnalysis, listGridCodes, getErrorMessage } from "@/lib/api";
 import { HelpIcon } from "@/components/ui/help-drawer";
 import { ChartExportButton } from "./chart-export-button";
@@ -51,6 +51,160 @@ function loadingBadge(pct: number) {
   return { text: `${pct.toFixed(1)}%`, variant: "default" as const };
 }
 
+/** Branch type display label */
+function branchTypeLabel(t: string) {
+  switch (t) {
+    case "cable": return "Cable";
+    case "transformer": return "Xfmr";
+    case "line": return "Line";
+    case "inverter": return "Inv";
+    default: return t;
+  }
+}
+
+/** Severity for a contingency item */
+function contingencySeverity(r: ContingencyItem): "critical" | "warning" | "pass" {
+  if (r.causes_islanding || !r.converged) return "critical";
+  if (r.min_voltage_pu < 0.85 || r.max_loading_pct > 150) return "critical";
+  if (!r.passed) return "warning";
+  return "pass";
+}
+
+/** Suggestion text based on violation type */
+function violationAdvice(r: ContingencyItem): string | null {
+  if (r.causes_islanding) {
+    return "Removing this branch disconnects part of the network. Consider adding a redundant parallel feeder or ring topology to maintain supply.";
+  }
+  if (!r.converged) {
+    return "Power flow did not converge — indicates potential voltage collapse. Increase generation capacity or add reactive power support near load centers.";
+  }
+  const issues: string[] = [];
+  if (r.voltage_violations.length > 0) {
+    issues.push("Voltage outside limits — upgrade cables to reduce impedance, or install a capacitor bank / voltage regulator at the affected bus.");
+  }
+  if (r.thermal_violations.length > 0) {
+    issues.push("Branch overloaded — replace with a higher-rated cable/transformer, or split the load across parallel paths.");
+  }
+  return issues.length > 0 ? issues.join(" ") : null;
+}
+
+/** Expandable contingency table row */
+function ContingencyRow({
+  item: r,
+  hasDetails,
+  isExpanded,
+  onToggle,
+}: {
+  item: ContingencyItem;
+  hasDetails: boolean;
+  isExpanded: boolean;
+  onToggle: () => void;
+}) {
+  const severity = contingencySeverity(r);
+  const advice = violationAdvice(r);
+  const rowBg = severity === "critical"
+    ? "bg-red-500/5"
+    : severity === "warning"
+    ? "bg-orange-500/5"
+    : "";
+
+  return (
+    <>
+      <tr
+        className={`border-b border-border/50 ${rowBg} ${hasDetails ? "cursor-pointer hover:bg-muted/30" : ""}`}
+        onClick={hasDetails ? onToggle : undefined}
+      >
+        <td className="py-2 px-1 text-center">
+          {hasDetails && (
+            isExpanded
+              ? <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
+              : <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />
+          )}
+        </td>
+        <td className="py-2 px-3 font-medium">{r.branch_name}</td>
+        <td className="py-2 px-2 text-center">
+          <span className="text-xs text-muted-foreground">{branchTypeLabel(r.branch_type)}</span>
+        </td>
+        <td className="py-2 px-3 text-center">
+          {r.causes_islanding ? (
+            <Badge variant="secondary">Island</Badge>
+          ) : !r.converged ? (
+            <Badge variant="destructive">Collapse</Badge>
+          ) : r.passed ? (
+            <Badge variant="default">Pass</Badge>
+          ) : (
+            <Badge variant="destructive">Fail</Badge>
+          )}
+        </td>
+        <td className="py-2 px-3 text-right font-mono">
+          {r.causes_islanding ? "—" : r.min_voltage_pu.toFixed(4)}
+        </td>
+        <td className="py-2 px-3 text-right font-mono">
+          {r.causes_islanding ? "—" : `${r.max_loading_pct.toFixed(1)}%`}
+        </td>
+      </tr>
+      {isExpanded && hasDetails && (
+        <tr className={rowBg}>
+          <td colSpan={6} className="px-6 pb-3 pt-1">
+            {/* Voltage violations */}
+            {r.voltage_violations.length > 0 && (
+              <div className="mb-2">
+                <p className="text-xs font-medium text-muted-foreground mb-1">Voltage Violations</p>
+                <div className="space-y-1">
+                  {r.voltage_violations.map((v, i) => (
+                    <div key={i} className="flex items-center gap-2 text-xs">
+                      <AlertTriangle className="h-3 w-3 text-red-500 shrink-0" />
+                      <span>
+                        <span className="font-medium">{v.bus_name}</span>: {v.voltage_pu.toFixed(4)} pu
+                        {" "}({v.limit_type === "low" ? "below" : "above"} limit of {v.limit_value.toFixed(2)} pu)
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+            {/* Thermal violations */}
+            {r.thermal_violations.length > 0 && (
+              <div className="mb-2">
+                <p className="text-xs font-medium text-muted-foreground mb-1">Thermal Violations</p>
+                <div className="space-y-1">
+                  {r.thermal_violations.map((t, i) => (
+                    <div key={i} className="flex items-center gap-2 text-xs">
+                      <Zap className="h-3 w-3 text-orange-500 shrink-0" />
+                      <span>
+                        <span className="font-medium">{t.branch_name}</span>: {t.loading_pct.toFixed(1)}%
+                        {" "}(limit: {t.limit_pct.toFixed(0)}%, rated {t.rating_mva.toFixed(3)} MVA)
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+            {/* Remediation advice */}
+            {advice && (
+              <div className="flex items-start gap-2 mt-2 pt-2 border-t border-border/30">
+                <Info className="h-3 w-3 text-blue-400 mt-0.5 shrink-0" />
+                <p className="text-xs text-muted-foreground">{advice}</p>
+              </div>
+            )}
+          </td>
+        </tr>
+      )}
+      {/* Inline advice for islanding/collapse (no expand needed) */}
+      {!hasDetails && (r.causes_islanding || !r.converged) && advice && (
+        <tr className={rowBg}>
+          <td colSpan={6} className="px-6 pb-2 pt-0">
+            <div className="flex items-start gap-2">
+              <Info className="h-3 w-3 text-blue-400 mt-0.5 shrink-0" />
+              <p className="text-xs text-muted-foreground">{advice}</p>
+            </div>
+          </td>
+        </tr>
+      )}
+    </>
+  );
+}
+
 export default function NetworkResultsPanel({ data, projectId }: NetworkResultsPanelProps) {
   const [showShortCircuit, setShowShortCircuit] = useState(false);
   const [contingencyResult, setContingencyResult] = useState<ContingencyAnalysisResult | null>(null);
@@ -58,6 +212,7 @@ export default function NetworkResultsPanel({ data, projectId }: NetworkResultsP
   const [showContingency, setShowContingency] = useState(false);
   const [gridCode, setGridCode] = useState("iec_default");
   const [gridCodes, setGridCodes] = useState<GridCodeSummary[]>([]);
+  const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
   const voltageChartRef = useRef<HTMLDivElement>(null);
   const s = data.power_flow_summary;
 
@@ -323,8 +478,9 @@ export default function NetworkResultsPanel({ data, projectId }: NetworkResultsP
             </div>
           </CardHeader>
           {contingencyResult && showContingency && (
-            <CardContent>
-              <div className="flex items-center gap-3 mb-4">
+            <CardContent className="space-y-4">
+              {/* Summary banner */}
+              <div className="flex items-center gap-3">
                 {contingencyResult.summary.n1_secure ? (
                   <div className="flex items-center gap-2 text-emerald-500">
                     <ShieldCheck className="h-5 w-5" />
@@ -341,37 +497,86 @@ export default function NetworkResultsPanel({ data, projectId }: NetworkResultsP
                   {contingencyResult.summary.islanding_cases > 0 && ` · ${contingencyResult.summary.islanding_cases} islanding`}
                 </span>
               </div>
+
+              {/* Worst-case summary cards (only when violations exist) */}
+              {!contingencyResult.summary.n1_secure && (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  {contingencyResult.summary.worst_voltage_pu < 0.95 && (
+                    <div className="rounded-lg border border-red-500/30 bg-red-500/5 p-3">
+                      <div className="flex items-start gap-2">
+                        <AlertTriangle className="h-4 w-4 text-red-500 mt-0.5 shrink-0" />
+                        <div>
+                          <p className="text-sm font-medium text-red-500">Worst Voltage: {contingencyResult.summary.worst_voltage_pu.toFixed(3)} pu</p>
+                          <p className="text-xs text-muted-foreground mt-0.5">
+                            at <span className="font-medium">{contingencyResult.summary.worst_voltage_bus}</span>
+                          </p>
+                          <p className="text-xs text-muted-foreground mt-1">
+                            Upgrade feeder cables to reduce impedance, or add reactive power compensation (capacitor bank) at the affected bus.
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                  {contingencyResult.summary.worst_loading_pct > 100 && (
+                    <div className="rounded-lg border border-orange-500/30 bg-orange-500/5 p-3">
+                      <div className="flex items-start gap-2">
+                        <Zap className="h-4 w-4 text-orange-500 mt-0.5 shrink-0" />
+                        <div>
+                          <p className="text-sm font-medium text-orange-500">Worst Loading: {contingencyResult.summary.worst_loading_pct.toFixed(1)}%</p>
+                          <p className="text-xs text-muted-foreground mt-0.5">
+                            on <span className="font-medium">{contingencyResult.summary.worst_loading_branch}</span>
+                          </p>
+                          <p className="text-xs text-muted-foreground mt-1">
+                            Upgrade the overloaded branch to a higher-rated cable/transformer, or redistribute load across parallel paths.
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Contingency table with expandable rows */}
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="border-b border-border">
+                      <th className="w-6 py-2 px-1"></th>
                       <th className="text-left py-2 px-3 text-muted-foreground font-medium">Outaged Branch</th>
+                      <th className="text-center py-2 px-2 text-muted-foreground font-medium">Type</th>
                       <th className="text-center py-2 px-3 text-muted-foreground font-medium">Status</th>
-                      <th className="text-right py-2 px-3 text-muted-foreground font-medium">Worst V (pu)</th>
-                      <th className="text-right py-2 px-3 text-muted-foreground font-medium">Max Loading (%)</th>
+                      <th className="text-right py-2 px-3 text-muted-foreground font-medium">Min V (pu)</th>
+                      <th className="text-right py-2 px-3 text-muted-foreground font-medium">Max Loading</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {contingencyResult.contingencies.map((r) => (
-                      <tr key={r.branch_name} className="border-b border-border/50">
-                        <td className="py-2 px-3">{r.branch_name}</td>
-                        <td className="py-2 px-3 text-center">
-                          {r.causes_islanding ? (
-                            <Badge variant="secondary">Island</Badge>
-                          ) : r.passed ? (
-                            <Badge variant="default">Pass</Badge>
-                          ) : (
-                            <Badge variant="destructive">Fail</Badge>
-                          )}
-                        </td>
-                        <td className="py-2 px-3 text-right font-mono">
-                          {r.min_voltage_pu != null ? r.min_voltage_pu.toFixed(4) : "—"}
-                        </td>
-                        <td className="py-2 px-3 text-right font-mono">
-                          {r.max_loading_pct != null ? r.max_loading_pct.toFixed(1) : "—"}
-                        </td>
-                      </tr>
-                    ))}
+                    {/* Sort: failed first, then by severity */}
+                    {[...contingencyResult.contingencies]
+                      .sort((a, b) => {
+                        if (a.passed !== b.passed) return a.passed ? 1 : -1;
+                        return b.max_loading_pct - a.max_loading_pct;
+                      })
+                      .map((r) => {
+                        const hasDetails = !r.causes_islanding && (r.voltage_violations.length > 0 || r.thermal_violations.length > 0);
+                        const isExpanded = expandedRows.has(r.branch_name);
+                        const toggleExpand = () => {
+                          setExpandedRows((prev) => {
+                            const next = new Set(prev);
+                            if (next.has(r.branch_name)) next.delete(r.branch_name);
+                            else next.add(r.branch_name);
+                            return next;
+                          });
+                        };
+                        return (
+                          <ContingencyRow
+                            key={r.branch_name}
+                            item={r}
+                            hasDetails={hasDetails}
+                            isExpanded={isExpanded}
+                            onToggle={toggleExpand}
+                          />
+                        );
+                      })}
                   </tbody>
                 </table>
               </div>

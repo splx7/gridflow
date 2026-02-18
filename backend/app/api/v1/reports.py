@@ -1,6 +1,8 @@
 """PDF report download endpoint."""
+import asyncio
 import uuid
 import zlib
+from functools import partial
 
 import numpy as np
 from fastapi import APIRouter, Depends, HTTPException, Request, status
@@ -326,24 +328,29 @@ async def download_pdf_report(
 
     from engine.reporting.pdf_report import generate_pdf_report
 
-    pdf_buffer = generate_pdf_report(
-        project_name=project.name,
-        project_description=project.description,
-        project_location=(project.latitude, project.longitude),
-        simulation_name=sim.name,
-        dispatch_strategy=sim.dispatch_strategy,
-        lifetime_years=project.lifetime_years,
-        discount_rate=project.discount_rate,
-        economics=economics,
-        timeseries=timeseries,
-        components=components,
-        summary=summary,
-        network_data=sr.power_flow_summary,
-        ts_bus_voltages=sr.ts_bus_voltages,
-        sensitivity_results=sr.sensitivity_results,
-        buses=buses if buses else None,
-        branches=branches_data if branches_data else None,
-        fref_metadata=fref_metadata,
+    # Run CPU-bound PDF generation in a thread to avoid blocking the event loop
+    pdf_buffer = await asyncio.get_event_loop().run_in_executor(
+        None,
+        partial(
+            generate_pdf_report,
+            project_name=project.name,
+            project_description=project.description,
+            project_location=(project.latitude, project.longitude),
+            simulation_name=sim.name,
+            dispatch_strategy=sim.dispatch_strategy,
+            lifetime_years=project.lifetime_years,
+            discount_rate=project.discount_rate,
+            economics=economics,
+            timeseries=timeseries,
+            components=components,
+            summary=summary,
+            network_data=sr.power_flow_summary,
+            ts_bus_voltages=sr.ts_bus_voltages,
+            sensitivity_results=sr.sensitivity_results,
+            buses=buses if buses else None,
+            branches=branches_data if branches_data else None,
+            fref_metadata=fref_metadata,
+        ),
     )
 
     filename = f"gridflow_{project.name}_{sim.name}.pdf".replace(" ", "_")

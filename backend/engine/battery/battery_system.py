@@ -117,11 +117,10 @@ class BatterySystem:
         kibam_limit = self._kibam.max_charge_power(soc, self.max_charge_kw)
         clamped_power = min(power_kw, self.max_charge_kw, kibam_limit)
 
-        # Derate by remaining capacity (degraded battery stores less).
-        effective_power = clamped_power * self._capacity_remaining
-
         # SOC tracker handles efficiency losses and SOC bounds.
-        actual_power, new_soc = self._soc_tracker.step(effective_power, dt)
+        # Note: degradation reduces stored energy (tracked via capacity_remaining)
+        # but does NOT reduce instantaneous power capability.
+        actual_power, new_soc = self._soc_tracker.step(clamped_power, dt)
 
         # Bookkeeping.
         energy_kw = abs(actual_power) * dt
@@ -153,11 +152,9 @@ class BatterySystem:
         kibam_limit = self._kibam.max_discharge_power(soc, self.max_discharge_kw)
         clamped_power = min(power_kw, self.max_discharge_kw, kibam_limit)
 
-        # Derate by remaining capacity.
-        effective_power = clamped_power * self._capacity_remaining
-
         # SOC tracker: negative power = discharge.
-        actual_power, new_soc = self._soc_tracker.step(-effective_power, dt)
+        # Note: degradation reduces stored energy, not instantaneous power.
+        actual_power, new_soc = self._soc_tracker.step(-clamped_power, dt)
 
         # Bookkeeping (actual_power is negative for discharge).
         energy_kw = abs(actual_power) * dt

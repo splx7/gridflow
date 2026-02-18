@@ -156,7 +156,15 @@ def sensitivity_analysis(
         sweep_results: list[dict[str, Any]] = []
 
         for val in sweep_values:
-            params = copy.deepcopy(base_params)
+            # Only deep-copy mutable config dicts; share weather/load arrays
+            # (they are never mutated by the simulation runner).
+            params = {
+                "components": copy.deepcopy(base_params["components"]),
+                "project": copy.deepcopy(base_params["project"]),
+                "dispatch_strategy": base_params["dispatch_strategy"],
+                "weather": base_params["weather"],
+                "load_kw": base_params["load_kw"],
+            }
             _set_nested(params, param_path, val)
 
             result = run_fn(params)

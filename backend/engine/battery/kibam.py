@@ -166,8 +166,13 @@ class KiBaMModel:
         kinetic_limit_kw = q1_room * k / c + conductance_flow
         kinetic_limit_kw = max(kinetic_limit_kw, 0.0)
 
-        # Also limit linearly near full SOC for numerical safety.
-        soc_limit = max_rate * (1.0 - soc)
+        # Taper only in the last 15% of SOC range (realistic for Li-ion/LFP).
+        # Full power available from 0% to 85% SOC; linear taper 85%→100%.
+        taper_start = 0.85
+        if soc < taper_start:
+            soc_limit = max_rate
+        else:
+            soc_limit = max_rate * (1.0 - soc) / (1.0 - taper_start)
 
         return float(min(max_rate, kinetic_limit_kw, soc_limit))
 
@@ -214,8 +219,13 @@ class KiBaMModel:
         kinetic_limit_kw = q1 * k / c + max(conductance_flow, 0.0)
         kinetic_limit_kw = max(kinetic_limit_kw, 0.0)
 
-        # Linear taper near empty.
-        soc_limit = max_rate * soc
+        # Taper only in the last 15% of SOC range (realistic for Li-ion/LFP).
+        # Full power available from 15% to 100% SOC; linear taper 0%→15%.
+        taper_end = 0.15
+        if soc > taper_end:
+            soc_limit = max_rate
+        else:
+            soc_limit = max_rate * soc / taper_end
 
         return float(min(max_rate, kinetic_limit_kw, soc_limit))
 

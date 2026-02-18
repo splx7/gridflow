@@ -128,8 +128,13 @@ def _dispatch_load_following(
             result["battery_discharge_kw"] = discharged
             deficit -= discharged
 
-        # 2) Generator
-        if deficit > 0 and generator is not None:
+        # If battery covered the deficit, shut down generator
+        if deficit <= 0 and generator is not None and gen_running:
+            generator.stop()
+            result["gen_running"] = False
+
+        # 2) Generator (dead-band: don't start for < 100W residuals)
+        if deficit > 0.1 and generator is not None:
             out_kw, fuel_l, cost, running = generator.simulate_hour(
                 deficit, gen_running
             )
@@ -138,6 +143,16 @@ def _dispatch_load_following(
             result["generator_cost"] = cost
             result["gen_running"] = running
             deficit -= out_kw
+
+            # Generator min-load may overproduce; charge battery with excess
+            if deficit < 0 and battery is not None:
+                gen_excess = -deficit
+                charged = battery.charge(gen_excess)
+                result["battery_charge_kw"] += charged
+                gen_excess -= charged
+                if gen_excess > 0:
+                    result["curtailed_kw"] += gen_excess
+                deficit = 0.0
 
         # 3) Grid import
         if deficit > 0 and grid is not None:

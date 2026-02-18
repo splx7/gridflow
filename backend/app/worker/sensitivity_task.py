@@ -82,7 +82,12 @@ def _load_simulation_config(db: Session, sim: Simulation):
     return weather_dict, load_kw, component_configs, project
 
 
-@celery_app.task(bind=True, name="run_sensitivity")
+@celery_app.task(
+    bind=True,
+    name="run_sensitivity",
+    soft_time_limit=600,   # 10 min soft limit
+    time_limit=660,        # 11 min hard kill
+)
 def run_sensitivity(self, simulation_id: str, variables: list[dict]) -> dict:
     """Run OAT sensitivity analysis for a completed simulation."""
     sim_uuid = uuid.UUID(simulation_id)
@@ -106,13 +111,20 @@ def run_sensitivity(self, simulation_id: str, variables: list[dict]) -> dict:
                 _load_simulation_config(db, sim)
             )
 
+            # Force heuristic dispatch for sensitivity sweeps.
+            # The LP optimal solver (~5-10s/run x 37 runs) is too slow;
+            # heuristic gives the same economic sensitivity trends at ~0.5s/run.
+            strategy = sim.dispatch_strategy
+            if strategy == "optimal":
+                strategy = "load_following"
+
             # Build the base parameter set for sensitivity analysis.
-            # The param_path in variables uses dot notation into this dict.
+            # Weather/load arrays are shared by reference (never mutated by runner).
             base_params = {
                 "components": copy.deepcopy(component_configs),
                 "weather": weather_dict,
                 "load_kw": load_kw,
-                "dispatch_strategy": sim.dispatch_strategy,
+                "dispatch_strategy": strategy,
                 "project": {
                     "lifetime_years": project.lifetime_years,
                     "discount_rate": project.discount_rate,
@@ -172,4 +184,10 @@ def run_sensitivity(self, simulation_id: str, variables: list[dict]) -> dict:
 
         except Exception as e:
             traceback.print_exc()
+            # Persist error so frontend can detect failure instead of polling forever
+            try:
+                sim_result.sensitivity_results = {"error": str(e)}
+                db.commit()
+            except Exception:
+                pass
             raise

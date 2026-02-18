@@ -39,6 +39,7 @@ def create_app() -> FastAPI:
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
+        expose_headers=["Content-Disposition"],
     )
 
     application.include_router(auth.router, prefix="/api/v1/auth", tags=["auth"])
