@@ -325,7 +325,7 @@ export default function NetworkResultsPanel({ data, projectId }: NetworkResultsP
           {contingencyResult && showContingency && (
             <CardContent>
               <div className="flex items-center gap-3 mb-4">
-                {contingencyResult.n1_secure ? (
+                {contingencyResult.summary.n1_secure ? (
                   <div className="flex items-center gap-2 text-emerald-500">
                     <ShieldCheck className="h-5 w-5" />
                     <span className="text-sm font-medium">N-1 Secure</span>
@@ -337,8 +337,8 @@ export default function NetworkResultsPanel({ data, projectId }: NetworkResultsP
                   </div>
                 )}
                 <span className="text-xs text-muted-foreground">
-                  {contingencyResult.passed_count}/{contingencyResult.total_contingencies} passed
-                  {contingencyResult.islanding_count > 0 && ` · ${contingencyResult.islanding_count} islanding`}
+                  {contingencyResult.summary.passed}/{contingencyResult.summary.total_contingencies} passed
+                  {contingencyResult.summary.islanding_cases > 0 && ` · ${contingencyResult.summary.islanding_cases} islanding`}
                 </span>
               </div>
               <div className="overflow-x-auto">
@@ -352,11 +352,11 @@ export default function NetworkResultsPanel({ data, projectId }: NetworkResultsP
                     </tr>
                   </thead>
                   <tbody>
-                    {contingencyResult.results.map((r) => (
+                    {contingencyResult.contingencies.map((r) => (
                       <tr key={r.branch_name} className="border-b border-border/50">
                         <td className="py-2 px-3">{r.branch_name}</td>
                         <td className="py-2 px-3 text-center">
-                          {r.islanding ? (
+                          {r.causes_islanding ? (
                             <Badge variant="secondary">Island</Badge>
                           ) : r.passed ? (
                             <Badge variant="default">Pass</Badge>
@@ -365,10 +365,10 @@ export default function NetworkResultsPanel({ data, projectId }: NetworkResultsP
                           )}
                         </td>
                         <td className="py-2 px-3 text-right font-mono">
-                          {r.worst_voltage_pu != null ? r.worst_voltage_pu.toFixed(4) : "—"}
+                          {r.min_voltage_pu != null ? r.min_voltage_pu.toFixed(4) : "—"}
                         </td>
                         <td className="py-2 px-3 text-right font-mono">
-                          {r.worst_loading_pct != null ? r.worst_loading_pct.toFixed(1) : "—"}
+                          {r.max_loading_pct != null ? r.max_loading_pct.toFixed(1) : "—"}
                         </td>
                       </tr>
                     ))}

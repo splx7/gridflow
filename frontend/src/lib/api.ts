@@ -545,7 +545,7 @@ export async function runContingencyAnalysis(
 
 export async function listGridCodes(): Promise<GridCodeSummary[]> {
   const { data } = await api.get("/grid-codes");
-  return data;
+  return data.profiles ?? data;
 }
 
 // BESS Recommendation

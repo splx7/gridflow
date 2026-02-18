@@ -523,42 +523,53 @@ export interface SensitivityResult {
   };
 }
 
-// Contingency analysis types
-export interface ContingencyViolation {
+// Contingency analysis types — matches backend ContingencyResponse exactly
+export interface ContingencyVoltageViolation {
   bus_name: string;
+  bus_index: number;
   voltage_pu: number;
-  limit_pu: number;
-  violation_type: "under" | "over";
+  limit_type: string;
+  limit_value: number;
 }
 
 export interface ContingencyThermalViolation {
   branch_name: string;
+  branch_index: number;
   loading_pct: number;
+  rating_mva: number;
   limit_pct: number;
 }
 
-export interface ContingencyBranchResult {
+export interface ContingencyItem {
   branch_name: string;
   branch_index: number;
+  branch_type: string;
   passed: boolean;
   converged: boolean;
-  islanding: boolean;
-  voltage_violations: ContingencyViolation[];
+  causes_islanding: boolean;
+  min_voltage_pu: number;
+  max_voltage_pu: number;
+  max_loading_pct: number;
+  voltage_violations: ContingencyVoltageViolation[];
   thermal_violations: ContingencyThermalViolation[];
-  worst_voltage_pu: number | null;
-  worst_loading_pct: number | null;
+}
+
+export interface ContingencySummary {
+  total_contingencies: number;
+  passed: number;
+  failed: number;
+  islanding_cases: number;
+  worst_voltage_pu: number;
+  worst_voltage_bus: string;
+  worst_loading_pct: number;
+  worst_loading_branch: string;
+  n1_secure: boolean;
 }
 
 export interface ContingencyAnalysisResult {
-  n1_secure: boolean;
-  total_contingencies: number;
-  passed_count: number;
-  failed_count: number;
-  islanding_count: number;
-  worst_voltage_pu: number | null;
-  worst_loading_pct: number | null;
   grid_code: string;
-  results: ContingencyBranchResult[];
+  summary: ContingencySummary;
+  contingencies: ContingencyItem[];
 }
 
 // BESS Sizing Recommendation
@@ -583,15 +594,14 @@ export interface BESSRecommendation {
   notes: string[];
 }
 
-// Grid code profile summary
+// Grid code profile summary — matches backend GridCodeProfileSummary
 export interface GridCodeSummary {
   key: string;
   name: string;
-  description: string;
+  standard: string;
   voltage_normal: [number, number];
-  voltage_contingency: [number, number];
   thermal_limit_pct: number;
-  frequency_hz: number;
+  frequency_nominal_hz: number;
 }
 
 // Project & Component Template types
