@@ -34,14 +34,13 @@ async def fetch_nasa_power_monthly(lat: float, lon: float) -> dict:
     Returns dict with 12-element lists for each variable:
         ghi, dni, dhi, temperature, temp_max, temp_min, wind_speed
     """
+    # Climatology endpoint does not accept start/end params
     params = {
         "latitude": lat,
         "longitude": lon,
         "community": "RE",
-        "parameters": "ALLSKY_SFC_SW_DWN,ALLSKY_SFC_SW_DNI,ALLSKY_SFC_SW_DIF,T2M,T2M_MAX,T2M_MIN,WS10M",
+        "parameters": "ALLSKY_SFC_SW_DWN,ALLSKY_SFC_SW_DNI,ALLSKY_SFC_SW_DIFF,T2M,T2M_MAX,T2M_MIN,WS10M",
         "format": "JSON",
-        "start": 2001,
-        "end": 2020,
     }
 
     async with httpx.AsyncClient(timeout=30.0) as client:
@@ -51,14 +50,25 @@ async def fetch_nasa_power_monthly(lat: float, lon: float) -> dict:
     data = response.json()
     props = data["properties"]["parameter"]
 
-    def _extract_monthly(key: str) -> list[float]:
+    _MONTH_KEYS = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN",
+                   "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"]
+
+    def _extract_monthly(key: str, to_wm2: bool = False) -> list[float]:
+        """Extract 12 monthly values. If to_wm2, convert kWh/m²/day → W/m².
+
+        NASA POWER irradiance is in kWh/m²/day. PVGIS hourly averages are
+        in W/m². To compare: W/m² = kWh/m²/day * 1000 / 24 ≈ *41.67.
+        """
         raw = props[key]
-        return [float(raw[str(m)]) for m in range(1, 13)]
+        values = [float(raw[m]) for m in _MONTH_KEYS]
+        if to_wm2:
+            values = [v * 1000.0 / 24.0 for v in values]
+        return values
 
     return {
-        "ghi": _extract_monthly("ALLSKY_SFC_SW_DWN"),
-        "dni": _extract_monthly("ALLSKY_SFC_SW_DNI"),
-        "dhi": _extract_monthly("ALLSKY_SFC_SW_DIF"),
+        "ghi": _extract_monthly("ALLSKY_SFC_SW_DWN", to_wm2=True),
+        "dni": _extract_monthly("ALLSKY_SFC_SW_DNI", to_wm2=True),
+        "dhi": _extract_monthly("ALLSKY_SFC_SW_DIFF", to_wm2=True),
         "temperature": _extract_monthly("T2M"),
         "temp_max": _extract_monthly("T2M_MAX"),
         "temp_min": _extract_monthly("T2M_MIN"),
