@@ -132,7 +132,8 @@ def weibull_aep(
     power = power_curve.interpolate(v)
 
     # Trapezoidal integration over wind speed.
-    energy_density = np.trapz(power * pdf, v)  # kW (mean)
+    _trapz = getattr(np, "trapezoid", None) or np.trapz
+    energy_density = _trapz(power * pdf, v)  # kW (mean)
     aep = energy_density * hours  # kWh
 
     return float(aep)
