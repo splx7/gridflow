@@ -57,9 +57,20 @@ async def fetch_pvgis(
     weather_limiter.check(request)
     project = await _get_user_project(project_id, user, db)
 
-    from app.services.weather_service import fetch_pvgis_tmy
+    correction_applied = False
+    correction_metadata = None
 
-    weather_data = await fetch_pvgis_tmy(project.latitude, project.longitude)
+    if body.apply_correction:
+        from app.services.weather_service import fetch_pvgis_tmy_corrected
+
+        weather_data, correction_metadata = await fetch_pvgis_tmy_corrected(
+            project.latitude, project.longitude, inject_extreme=body.inject_extreme_weather
+        )
+        correction_applied = correction_metadata.get("correction_source") != "none"
+    else:
+        from app.services.weather_service import fetch_pvgis_tmy
+
+        weather_data = await fetch_pvgis_tmy(project.latitude, project.longitude)
 
     dataset = WeatherDataset(
         project_id=project_id,
@@ -70,6 +81,8 @@ async def fetch_pvgis(
         dhi=_compress_array(weather_data["dhi"]),
         temperature=_compress_array(weather_data["temperature"]),
         wind_speed=_compress_array(weather_data["wind_speed"]),
+        correction_applied=correction_applied,
+        correction_metadata=correction_metadata,
     )
     db.add(dataset)
     await db.commit()

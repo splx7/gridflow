@@ -1,10 +1,13 @@
 import csv
 import io
+import logging
 
 import httpx
 import numpy as np
 
 from app.config import settings
+
+logger = logging.getLogger(__name__)
 
 
 async def fetch_pvgis_tmy(lat: float, lon: float) -> dict[str, np.ndarray]:
@@ -21,6 +24,43 @@ async def fetch_pvgis_tmy(lat: float, lon: float) -> dict[str, np.ndarray]:
         response.raise_for_status()
 
     return parse_tmy_csv(response.text)
+
+
+async def fetch_pvgis_tmy_corrected(
+    lat: float,
+    lon: float,
+    inject_extreme: bool = False,
+) -> tuple[dict[str, np.ndarray], dict]:
+    """Fetch PVGIS TMY data corrected with NASA POWER monthly climatology.
+
+    Returns (corrected_data, correction_metadata).
+    Falls back to uncorrected PVGIS if NASA POWER API fails.
+    """
+    from engine.weather.nasa_power import (
+        apply_monthly_correction,
+        fetch_nasa_power_monthly,
+        inject_cyclone_events,
+    )
+
+    pvgis_data = await fetch_pvgis_tmy(lat, lon)
+
+    try:
+        nasa_monthly = await fetch_nasa_power_monthly(lat, lon)
+    except Exception as exc:
+        logger.warning("NASA POWER API failed, using uncorrected PVGIS: %s", exc)
+        metadata = {
+            "correction_source": "none",
+            "warning": f"NASA POWER API unavailable: {exc}",
+        }
+        return pvgis_data, metadata
+
+    corrected_data, metadata = apply_monthly_correction(pvgis_data, nasa_monthly)
+
+    if inject_extreme:
+        corrected_data, events = inject_cyclone_events(corrected_data, lat)
+        metadata["cyclone_events"] = events
+
+    return corrected_data, metadata
 
 
 def parse_tmy_csv(csv_text: str) -> dict[str, np.ndarray]:

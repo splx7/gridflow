@@ -1,8 +1,8 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import String, ForeignKey, DateTime, LargeBinary, func
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy import Boolean, String, ForeignKey, DateTime, LargeBinary, func
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.database import Base
@@ -24,6 +24,10 @@ class WeatherDataset(Base):
     dhi: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
     temperature: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
     wind_speed: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
+    correction_applied: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default="false"
+    )
+    correction_metadata: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )

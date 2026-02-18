@@ -9,6 +9,7 @@ class WeatherDatasetResponse(BaseModel):
     project_id: uuid.UUID
     name: str
     source: str
+    correction_applied: bool = False
     created_at: datetime
 
     model_config = {"from_attributes": True}
@@ -16,6 +17,12 @@ class WeatherDatasetResponse(BaseModel):
 
 class PVGISRequest(BaseModel):
     name: str = Field(default="PVGIS TMY", max_length=255)
+    apply_correction: bool = Field(
+        default=True, description="Apply NASA POWER monthly de-biasing"
+    )
+    inject_extreme_weather: bool = Field(
+        default=False, description="Inject synthetic cyclone events (Pacific islands)"
+    )
 
 
 class LoadProfileResponse(BaseModel):

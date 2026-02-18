@@ -352,15 +352,20 @@ export default function DataPanel({ projectId }: DataPanelProps) {
             </div>
           )}
 
-          <div className="flex gap-3">
-            <Button onClick={handleFetchPVGIS} disabled={fetchingPVGIS}>
-              {fetchingPVGIS ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <CloudSun className="h-4 w-4" />
-              )}
-              Fetch from PVGIS
-            </Button>
+          <div className="flex gap-3 items-start">
+            <div className="space-y-1.5">
+              <Button onClick={handleFetchPVGIS} disabled={fetchingPVGIS}>
+                {fetchingPVGIS ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <CloudSun className="h-4 w-4" />
+                )}
+                Fetch from PVGIS
+              </Button>
+              <p className="text-[10px] text-muted-foreground">
+                Corrected with NASA POWER climatology
+              </p>
+            </div>
             <Button
               variant="outline"
               onClick={() => weatherFileRef.current?.click()}
@@ -414,6 +419,11 @@ export default function DataPanel({ projectId }: DataPanelProps) {
                     <CloudSun className="h-4 w-4 text-amber-400" />
                     <span className="text-sm font-medium">{ds.name}</span>
                     <Badge variant="secondary">{ds.source}</Badge>
+                    {ds.correction_applied && (
+                      <Badge variant="outline" className="text-[10px] text-emerald-500 border-emerald-500/30">
+                        NASA corrected
+                      </Badge>
+                    )}
                   </div>
                   <span className="text-xs text-muted-foreground">
                     {new Date(ds.created_at).toLocaleDateString()}

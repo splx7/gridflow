@@ -155,6 +155,7 @@ export interface WeatherDataset {
   project_id: string;
   name: string;
   source: string;
+  correction_applied: boolean;
   created_at: string;
 }
 

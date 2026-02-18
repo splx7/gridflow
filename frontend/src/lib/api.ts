@@ -230,10 +230,14 @@ export async function listWeatherDatasets(
 
 export async function fetchPVGIS(
   projectId: string,
-  name?: string
+  name?: string,
+  applyCorrection: boolean = true,
+  injectExtremeWeather: boolean = false,
 ): Promise<WeatherDataset> {
   const { data } = await api.post(`/projects/${projectId}/weather/pvgis`, {
     name: name || "PVGIS TMY",
+    apply_correction: applyCorrection,
+    inject_extreme_weather: injectExtremeWeather,
   });
   return data;
 }
