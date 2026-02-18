@@ -1,13 +1,27 @@
 "use client";
 
 import { useState } from "react";
+import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import type { NetworkRecommendation, PowerFlowResult } from "@/types";
-import { AlertTriangle, AlertCircle, Info, ChevronDown, ChevronUp } from "lucide-react";
+import { useProjectStore } from "@/stores/project-store";
+import {
+  AlertTriangle,
+  AlertCircle,
+  Info,
+  ChevronDown,
+  ChevronUp,
+  Check,
+  X,
+  Loader2,
+  ArrowRight,
+} from "lucide-react";
 
 interface NetworkRecommendationsBarProps {
   recommendations: NetworkRecommendation[];
   powerFlowResult: PowerFlowResult | null;
+  projectId: string;
 }
 
 const LEVEL_CONFIG = {
@@ -37,8 +51,13 @@ const LEVEL_CONFIG = {
 export default function NetworkRecommendationsBar({
   recommendations,
   powerFlowResult,
+  projectId,
 }: NetworkRecommendationsBarProps) {
   const [expanded, setExpanded] = useState(false);
+  const [dismissedIndices, setDismissedIndices] = useState<Set<number>>(new Set());
+  const [applyingIndex, setApplyingIndex] = useState<number | null>(null);
+
+  const applyRecommendation = useProjectStore((s) => s.applyRecommendation);
 
   // Combine topology recommendations + PF violations
   const voltageViolations = powerFlowResult?.voltage_violations?.length ?? 0;
@@ -49,6 +68,31 @@ export default function NetworkRecommendationsBar({
   const hasIssues = errors > 0 || warnings > 0 || voltageViolations > 0 || thermalViolations > 0;
 
   if (recommendations.length === 0 && !hasIssues) return null;
+
+  const visibleRecs = recommendations.filter((_, i) => !dismissedIndices.has(i));
+
+  const handleAccept = async (rec: NetworkRecommendation, index: number) => {
+    if (!rec.action?.target_id) return;
+    setApplyingIndex(index);
+    try {
+      const ok = await applyRecommendation(projectId, rec);
+      if (ok) {
+        toast.success(`Applied: ${rec.action.description}`);
+        // Dismissed indices reset since PF re-ran and recommendations refreshed
+        setDismissedIndices(new Set());
+      } else {
+        toast.error("Failed to apply recommendation");
+      }
+    } catch {
+      toast.error("Failed to apply recommendation");
+    } finally {
+      setApplyingIndex(null);
+    }
+  };
+
+  const handleDismiss = (index: number) => {
+    setDismissedIndices((prev) => new Set([...prev, index]));
+  };
 
   return (
     <div className="border-b border-border">
@@ -97,12 +141,17 @@ export default function NetworkRecommendationsBar({
       {/* Expanded recommendation list */}
       {expanded && (
         <div className="px-4 pb-3 space-y-1.5">
-          {recommendations.map((rec, i) => {
+          {visibleRecs.map((rec) => {
+            // Find original index for action handling
+            const originalIndex = recommendations.indexOf(rec);
             const config = LEVEL_CONFIG[rec.level as keyof typeof LEVEL_CONFIG] || LEVEL_CONFIG.info;
             const Icon = config.icon;
+            const isApplying = applyingIndex === originalIndex;
+            const hasAction = rec.action?.target_id;
+
             return (
               <div
-                key={i}
+                key={originalIndex}
                 className={`flex items-start gap-2 rounded px-3 py-2 text-xs border ${config.bg} ${config.border}`}
               >
                 <Icon className={`h-3.5 w-3.5 mt-0.5 shrink-0 ${config.text}`} />
@@ -114,6 +163,45 @@ export default function NetworkRecommendationsBar({
                   </div>
                   <p className="mt-0.5">{rec.message}</p>
                   <p className="text-muted-foreground mt-0.5">{rec.suggestion}</p>
+
+                  {/* Action preview + buttons */}
+                  {hasAction && rec.action && (
+                    <div className="mt-2 flex items-center gap-2 flex-wrap">
+                      <div className="flex items-center gap-1.5 bg-background/60 rounded px-2 py-1 text-[11px] font-mono">
+                        <span className="text-muted-foreground line-through">
+                          {String(rec.action.old_value)}
+                        </span>
+                        <ArrowRight className="h-3 w-3 text-muted-foreground" />
+                        <span className="font-semibold text-foreground">
+                          {String(rec.action.new_value)}
+                        </span>
+                      </div>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-6 px-2 text-[11px] border-green-500/40 text-green-400 hover:bg-green-500/10"
+                        disabled={isApplying}
+                        onClick={() => handleAccept(rec, originalIndex)}
+                      >
+                        {isApplying ? (
+                          <Loader2 className="h-3 w-3 animate-spin mr-1" />
+                        ) : (
+                          <Check className="h-3 w-3 mr-1" />
+                        )}
+                        Accept
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="h-6 px-2 text-[11px] text-muted-foreground hover:text-foreground"
+                        disabled={isApplying}
+                        onClick={() => handleDismiss(originalIndex)}
+                      >
+                        <X className="h-3 w-3 mr-1" />
+                        Dismiss
+                      </Button>
+                    </div>
+                  )}
                 </div>
               </div>
             );

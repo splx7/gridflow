@@ -124,6 +124,7 @@ interface ProjectState {
   autoGenerateNetwork: (projectId: string, body?: AutoGenerateRequest) => Promise<AutoGenerateResponse>;
   clearNetworkRecommendations: () => void;
   setNetworkGeneratedComponentIds: (ids: string[]) => void;
+  applyRecommendation: (projectId: string, rec: NetworkRecommendation) => Promise<boolean>;
 }
 
 export const useProjectStore = create<ProjectState>((set, get) => ({
@@ -357,7 +358,11 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     set({ powerFlowLoading: true });
     try {
       const result = await api.runPowerFlow(projectId);
-      set({ powerFlowResult: result, powerFlowLoading: false });
+      set({
+        powerFlowResult: result,
+        powerFlowLoading: false,
+        networkRecommendations: result.recommendations ?? [],
+      });
       return result;
     } catch {
       set({ powerFlowLoading: false });
@@ -399,4 +404,38 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
 
   clearNetworkRecommendations: () => set({ networkRecommendations: [] }),
   setNetworkGeneratedComponentIds: (ids) => set({ networkGeneratedComponentIds: ids }),
+
+  applyRecommendation: async (projectId, rec) => {
+    if (!rec.action?.target_id) return false;
+    const action = rec.action;
+    const targetId = action.target_id!;
+    try {
+      // Find the current branch to merge config
+      const branch = get().branches.find((b) => b.id === targetId);
+      const existingConfig = branch?.config ?? {};
+
+      let newConfig: Record<string, unknown>;
+      if (action.field === "config.rated_power_kw") {
+        newConfig = { ...existingConfig, rated_power_kw: action.new_value };
+      } else if (action.field === "config.cable_spec" && action.cable_params) {
+        const cp = action.cable_params;
+        newConfig = {
+          ...existingConfig,
+          name: cp.name,
+          r_ohm_per_km: cp.r_ohm_per_km,
+          x_ohm_per_km: cp.x_ohm_per_km,
+          ampacity_a: cp.ampacity_a,
+        };
+      } else {
+        return false;
+      }
+
+      await get().updateBranch(projectId, targetId, { config: newConfig });
+      // Re-run power flow to see updated results
+      await get().runPowerFlow(projectId);
+      return true;
+    } catch {
+      return false;
+    }
+  },
 }));

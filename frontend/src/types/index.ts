@@ -390,12 +390,30 @@ export interface TransformerSpec {
   load_loss_kw: number;
 }
 
+// Recommendation action for network fixes
+export interface RecommendationAction {
+  type: string;
+  target_id: string | null;
+  target_name: string;
+  field: string;
+  old_value: unknown;
+  new_value: unknown;
+  description: string;
+  cable_params?: {
+    name: string;
+    r_ohm_per_km: number;
+    x_ohm_per_km: number;
+    ampacity_a: number;
+  } | null;
+}
+
 // Network auto-generate types
 export interface NetworkRecommendation {
   level: "info" | "warning" | "error";
   code: string;
   message: string;
   suggestion: string;
+  action?: RecommendationAction | null;
 }
 
 export interface AutoGenerateResponse {
@@ -460,6 +478,7 @@ export interface PowerFlowResult {
   thermal_violations: ThermalViolation[];
   short_circuit: Record<string, ShortCircuitBus>;
   summary: PowerFlowSummary;
+  recommendations?: NetworkRecommendation[];
 }
 
 // Sensitivity analysis types

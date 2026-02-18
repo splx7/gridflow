@@ -27,6 +27,8 @@ from app.schemas.power_flow import (
     PowerFlowRequest,
     PowerFlowResponse,
     PowerFlowSummary,
+    Recommendation,
+    RecommendationAction,
     ShortCircuitBus,
     ThermalViolation,
     VoltageViolation,
@@ -113,6 +115,7 @@ async def run_power_flow(
         if br.from_bus_id not in bus_uuid_to_idx or br.to_bus_id not in bus_uuid_to_idx:
             continue
         branches_config.append({
+            "id": str(br.id),
             "name": br.name,
             "branch_type": br.branch_type,
             "from_bus_idx": bus_uuid_to_idx[br.from_bus_id],
@@ -244,6 +247,59 @@ async def run_power_flow(
     )
     losses_pct = (total_loss_kw / total_flow_kw * 100) if total_flow_kw > 0 else 0.0
 
+    # Run advisor analysis to generate actionable recommendations
+    from engine.network.network_advisor import analyze_power_flow as analyze_pf
+
+    pf_dict = {
+        "converged": pf_result.converged,
+        "bus_voltages": bus_voltages,
+        "branch_flows": {
+            name: {
+                "from_kw": bf.from_kw,
+                "to_kw": bf.to_kw,
+                "loss_kw": bf.loss_kw,
+                "loading_pct": bf.loading_pct,
+            }
+            for name, bf in branch_flows.items()
+        },
+        "voltage_violations": [
+            {"bus_name": v.bus_name, "voltage_pu": v.voltage_pu, "limit": v.limit}
+            for v in voltage_violations
+        ],
+        "thermal_violations": [
+            {"branch_name": t.branch_name, "loading_pct": t.loading_pct}
+            for t in thermal_violations
+        ],
+        "summary": {
+            "total_losses_pct": round(losses_pct, 2),
+            "total_losses_kw": round(total_loss_kw, 2),
+        },
+    }
+    raw_recs = analyze_pf(pf_dict, buses_config, branches_config)
+
+    recommendations = []
+    for r in raw_recs:
+        action = None
+        if r.get("action"):
+            a = r["action"]
+            action = RecommendationAction(
+                type=a["type"],
+                target_id=a.get("target_id"),
+                target_name=a["target_name"],
+                field=a["field"],
+                old_value=a.get("old_value"),
+                new_value=a.get("new_value"),
+                description=a["description"],
+                cable_params=a.get("cable_params"),
+            )
+        recommendations.append(Recommendation(
+            level=r["level"],
+            code=r["code"],
+            message=r["message"],
+            suggestion=r["suggestion"],
+            action=action,
+        ))
+
     return PowerFlowResponse(
         converged=pf_result.converged,
         iterations=pf_result.iterations,
@@ -260,4 +316,5 @@ async def run_power_flow(
             total_losses_pct=round(losses_pct, 2),
             total_losses_kw=round(total_loss_kw, 2),
         ),
+        recommendations=recommendations,
     )

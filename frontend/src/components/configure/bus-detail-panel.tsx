@@ -137,7 +137,8 @@ export default function BusDetailPanel({
                 <p className="font-medium text-amber-400 mb-1">Voltage Violations</p>
                 {powerFlowResult.voltage_violations.map((v, i) => (
                   <p key={i} className="text-muted-foreground">
-                    {v.bus_name}: {(v.voltage_pu * 100).toFixed(2)}% ({v.limit})
+                    {v.bus_name}: {(v.voltage_pu * 100).toFixed(1)}%{" "}
+                    ({v.limit === "low" ? "min 95%" : "max 105%"})
                   </p>
                 ))}
               </div>
@@ -146,13 +147,25 @@ export default function BusDetailPanel({
             {powerFlowResult.thermal_violations.length > 0 && (
               <div className="mt-2 pt-2 border-t border-border">
                 <p className="font-medium text-red-400 mb-1">Thermal Violations</p>
-                {powerFlowResult.thermal_violations.map((v, i) => (
-                  <p key={i} className="text-muted-foreground">
-                    {v.branch_name}: {v.loading_pct.toFixed(1)}%
-                  </p>
-                ))}
+                {powerFlowResult.thermal_violations.map((v, i) => {
+                  const flow = powerFlowResult.branch_flows[v.branch_name];
+                  const ratingKw = v.rating_mva * 1000;
+                  return (
+                    <p key={i} className="text-muted-foreground">
+                      {v.branch_name}: {v.loading_pct.toFixed(1)}%
+                      {flow ? ` (${flow.from_kw.toFixed(0)} kW / ${ratingKw.toFixed(0)} kW rated)` : ""}
+                    </p>
+                  );
+                })}
               </div>
             )}
+
+            {powerFlowResult.voltage_violations.length > 0 ||
+            powerFlowResult.thermal_violations.length > 0 ? (
+              <p className="mt-1 text-[10px] text-muted-foreground italic">
+                Expand recommendations above for fix options
+              </p>
+            ) : null}
           </CardContent>
         </Card>
       )}

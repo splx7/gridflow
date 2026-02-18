@@ -97,15 +97,29 @@ class PVSystemConfig:
 # Helper: hour-of-year vectors
 # ---------------------------------------------------------------------------
 
-def _hour_of_year_vectors() -> tuple[NDArray[np.float64], NDArray[np.float64]]:
+def _hour_of_year_vectors(
+    longitude: float = 0.0,
+) -> tuple[NDArray[np.float64], NDArray[np.float64]]:
     """Return ``(day_of_year, hour_of_day)`` arrays each of length 8760.
 
     ``day_of_year`` ranges from 1 to 365 (non-leap year).
     ``hour_of_day`` ranges from 0.5 to 23.5 (mid-hour convention).
+
+    Parameters
+    ----------
+    longitude : float
+        Site longitude in degrees (positive east).  Used to convert the
+        UTC-indexed hour array to approximate local solar time.  PVGIS
+        TMY data is stored in UTC, so this offset is essential for sites
+        far from the prime meridian.
     """
-    hours = np.arange(HOURS_PER_YEAR, dtype=np.float64)
-    day_of_year = np.floor(hours / 24.0) + 1.0  # 1-indexed
-    hour_of_day = (hours % 24) + 0.5             # mid-hour
+    hours_utc = np.arange(HOURS_PER_YEAR, dtype=np.float64)
+    # Convert UTC to approximate local solar time:
+    # solar_time ≈ UTC + longitude / 15  (hours)
+    solar_time_offset = longitude / 15.0
+    hours_solar = hours_utc + solar_time_offset
+    day_of_year = (np.floor(hours_solar / 24.0) % 365) + 1.0  # 1-indexed, wrapped
+    hour_of_day = (hours_solar % 24) + 0.5  # mid-hour
     return day_of_year, hour_of_day
 
 
@@ -243,7 +257,7 @@ def simulate_pv(
     Pso_scaled = cfg.Pso * (Paco_scaled / cfg.Paco) if cfg.Paco > 0 else cfg.Pso
 
     # ---- 1. Solar position ----
-    day_of_year, hour_of_day = _hour_of_year_vectors()
+    day_of_year, hour_of_day = _hour_of_year_vectors(longitude=longitude)
     solar_zenith, solar_azimuth = solar_position(
         day_of_year, hour_of_day, latitude, longitude,
     )

@@ -309,6 +309,7 @@ export default function NetworkDiagram({
       <NetworkRecommendationsBar
         recommendations={networkRecommendations}
         powerFlowResult={powerFlowResult}
+        projectId={projectId}
       />
       <NetworkToolbar projectId={projectId} />
       <div className="flex-1 flex overflow-hidden">

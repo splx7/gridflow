@@ -631,8 +631,8 @@ class SimulationRunner:
             self._report("Running solar PV simulation", 0.10)
             pv_output = simulate_pv(
                 capacity_kwp=float(pv_cfg["capacity_kwp"]),
-                tilt=float(pv_cfg.get("tilt", 30.0)),
-                azimuth=float(pv_cfg.get("azimuth", 180.0)),
+                tilt=float(pv_cfg.get("tilt_deg", pv_cfg.get("tilt", 30.0))),
+                azimuth=float(pv_cfg.get("azimuth_deg", pv_cfg.get("azimuth", 180.0))),
                 latitude=float(pv_cfg["latitude"]),
                 longitude=float(pv_cfg["longitude"]),
                 ghi_8760=ghi,

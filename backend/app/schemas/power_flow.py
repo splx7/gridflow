@@ -1,3 +1,5 @@
+from typing import Any
+
 from pydantic import BaseModel, Field
 
 
@@ -46,12 +48,32 @@ class PowerFlowSummary(BaseModel):
     total_losses_kw: float
 
 
+class RecommendationAction(BaseModel):
+    type: str
+    target_id: str | None = None
+    target_name: str
+    field: str
+    old_value: Any = None
+    new_value: Any = None
+    description: str
+    cable_params: dict[str, Any] | None = None
+
+
+class Recommendation(BaseModel):
+    level: str
+    code: str
+    message: str
+    suggestion: str
+    action: RecommendationAction | None = None
+
+
 class PowerFlowResponse(BaseModel):
     converged: bool
     iterations: int
-    bus_voltages: dict[str, float]  # bus_name → voltage_pu
-    branch_flows: dict[str, BranchFlowSummary]  # branch_name → flow
+    bus_voltages: dict[str, float]  # bus_name -> voltage_pu
+    branch_flows: dict[str, BranchFlowSummary]  # branch_name -> flow
     voltage_violations: list[VoltageViolation]
     thermal_violations: list[ThermalViolation]
-    short_circuit: dict[str, ShortCircuitBus]  # bus_name → SC result
+    short_circuit: dict[str, ShortCircuitBus]  # bus_name -> SC result
     summary: PowerFlowSummary
+    recommendations: list[Recommendation] = []
