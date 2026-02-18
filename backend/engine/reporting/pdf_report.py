@@ -1701,7 +1701,122 @@ def _build_sensitivity_analysis(
 
 
 # ══════════════════════════════════════════════════════════════════════
-# Section 12: Conclusions & Recommendations
+# Section 12: FREF Analysis (conditional)
+# ══════════════════════════════════════════════════════════════════════
+
+def _build_fref_section(styles, fref_metadata: dict | None) -> list:
+    """Build the FREF (Fiji Rural Electrification Fund) analysis section.
+
+    Only rendered when fref_metadata is provided (i.e. FREF mode).
+    """
+    if not fref_metadata:
+        return []
+
+    elems: list = []
+    elems.append(PageBreak())
+    elems.append(Paragraph("FREF Analysis", styles["SectionHeader"]))
+    elems.append(Paragraph(
+        "Analysis specific to the Fiji Rural Electrification Fund programme, "
+        "including per-household costs, battery autonomy, diesel displacement, "
+        "and cyclone resilience.",
+        styles["BodyText2"],
+    ))
+    elems.append(Spacer(1, 4 * mm))
+
+    # Cost per Household table
+    cost_per_hh = fref_metadata.get("cost_per_household", {})
+    num_hh = fref_metadata.get("num_households", 0)
+    elems.append(Paragraph("Cost per Household", styles["SubSection"]))
+    cost_data = [
+        ["Metric", "Value"],
+        ["Number of Households", f"{num_hh}"],
+        ["Cost per Household (USD)",
+         _fmt(cost_per_hh.get("usd"), ",.0f", "$")],
+        ["Cost per Household (FJD)",
+         _fmt(cost_per_hh.get("fjd"), ",.0f", "FJ$")],
+        ["Monthly Cost per HH (USD, 20yr)",
+         _fmt(cost_per_hh.get("monthly_usd"), ",.0f", "$")],
+    ]
+    elems.append(_styled_table(cost_data, [100 * mm, 70 * mm]))
+    elems.append(Spacer(1, 4 * mm))
+
+    # Autonomy Analysis
+    autonomy = fref_metadata.get("autonomy", {})
+    elems.append(Paragraph("Autonomy Analysis", styles["SubSection"]))
+    auto_data = [
+        ["Parameter", "Value"],
+        ["Required Autonomy",
+         f"{autonomy.get('days_required', 3)} days"],
+        ["Battery Capacity",
+         _fmt(autonomy.get("battery_kwh"), ",.0f", "", " kWh")],
+        ["Daily Load",
+         _fmt(autonomy.get("daily_load_kwh"), ",.0f", "", " kWh")],
+        ["Actual Autonomy",
+         _fmt(autonomy.get("actual_days"), ".1f", "", " days")],
+        ["Meets FREF Requirement",
+         "Yes" if autonomy.get("meets_requirement", False) else "No"],
+    ]
+    elems.append(_styled_table(auto_data, [100 * mm, 70 * mm]))
+    elems.append(Spacer(1, 4 * mm))
+
+    # Diesel Displacement
+    displacement = fref_metadata.get("diesel_displacement", {})
+    elems.append(Paragraph("Diesel Displacement", styles["SubSection"]))
+    disp_data = [
+        ["Parameter", "Value"],
+        ["Diesel Displaced",
+         _fmt(displacement.get("pct"), ".1f", "", "%")],
+        ["Diesel Saved (L/yr)",
+         _fmt(displacement.get("litres_saved"), ",.0f", "", " L")],
+        ["Fuel Cost Saved (USD/yr)",
+         _fmt(displacement.get("cost_saved_usd"), ",.0f", "$")],
+        ["CO\u2082 Avoided (kg/yr)",
+         _fmt(displacement.get("co2_avoided_kg"), ",.0f", "", " kg")],
+    ]
+    elems.append(_styled_table(disp_data, [100 * mm, 70 * mm]))
+    elems.append(Spacer(1, 4 * mm))
+
+    # Cyclone Resilience
+    cyclone = fref_metadata.get("cyclone", {})
+    if cyclone:
+        elems.append(Paragraph("Cyclone Resilience", styles["SubSection"]))
+        cyc_data = [
+            ["Parameter", "Value"],
+            ["Cyclone Zone",
+             "Yes" if cyclone.get("in_zone", False) else "No"],
+            ["Annual Derating Applied",
+             _fmt(cyclone.get("derating_pct"), ".1f", "", "%")],
+            ["Energy Impact (kWh/yr)",
+             _fmt(cyclone.get("energy_loss_kwh"), ",.0f", "", " kWh")],
+        ]
+        elems.append(_styled_table(cyc_data, [100 * mm, 70 * mm]))
+        elems.append(Spacer(1, 4 * mm))
+
+    # Community Benefit Summary
+    elems.append(Paragraph("Community Benefit Summary", styles["SubSection"]))
+    tariff_fjd = fref_metadata.get("fea_tariff_comparison_fjd", 0)
+    system_lcoe_fjd = fref_metadata.get("system_lcoe_fjd", 0)
+    smart_meter = fref_metadata.get("smart_metering", {})
+    benefit_data = [
+        ["Metric", "Value"],
+        ["FEA Grid Tariff",
+         _fmt(tariff_fjd, ".4f", "FJ$", "/kWh")],
+        ["System LCOE (FJD)",
+         _fmt(system_lcoe_fjd, ".4f", "FJ$", "/kWh")],
+        ["Tariff Savings",
+         f"{'Yes' if system_lcoe_fjd and system_lcoe_fjd < tariff_fjd else 'No'} "
+         f"({_fmt(abs(tariff_fjd - system_lcoe_fjd) if tariff_fjd and system_lcoe_fjd else 0, '.4f', 'FJ$', '/kWh')})"],
+        ["Smart Metering",
+         f"{'Included' if smart_meter.get('included', False) else 'Not included'} "
+         f"({_fmt(smart_meter.get('total_cost_usd'), ',.0f', '$')})"],
+    ]
+    elems.append(_styled_table(benefit_data, [100 * mm, 70 * mm]))
+
+    return elems
+
+
+# ══════════════════════════════════════════════════════════════════════
+# Section 13: Conclusions & Recommendations
 # ══════════════════════════════════════════════════════════════════════
 
 def _build_conclusions(
@@ -1891,8 +2006,17 @@ def generate_pdf_report(
     sensitivity_results: dict | None = None,
     buses: list[dict] | None = None,
     branches: list[dict] | None = None,
+    fref_metadata: dict | None = None,
 ) -> BytesIO:
-    """Generate a professional PDF report and return as BytesIO buffer."""
+    """Generate a professional PDF report and return as BytesIO buffer.
+
+    Parameters
+    ----------
+    fref_metadata : dict or None
+        If provided, adds a Fiji FREF analysis section with per-household
+        costs, autonomy analysis, diesel displacement, and cyclone resilience.
+        Only rendered when this parameter is not None.
+    """
     economics = economics or {}
     timeseries = timeseries or {}
     components = components or []
@@ -1964,7 +2088,10 @@ def generate_pdf_report(
     # 11. Sensitivity Analysis (conditional)
     elements.extend(_build_sensitivity_analysis(styles, sensitivity_results))
 
-    # 12. Conclusions & Recommendations
+    # 12. FREF Analysis (conditional — only for Fiji FREF projects)
+    elements.extend(_build_fref_section(styles, fref_metadata))
+
+    # 13. Conclusions & Recommendations
     elements.extend(_build_conclusions(
         styles, economics, summary, network_data, components, discount_rate,
     ))

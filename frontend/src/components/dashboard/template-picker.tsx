@@ -17,6 +17,7 @@ const CATEGORY_COLORS: Record<string, string> = {
   "off-grid": "bg-amber-500/10 text-amber-500",
   "grid-connected": "bg-blue-500/10 text-blue-500",
   general: "bg-gray-500/10 text-gray-500",
+  fref: "bg-emerald-500/10 text-emerald-500",
 };
 
 const ICONS: Record<string, React.ReactNode> = {
@@ -97,7 +98,7 @@ export default function TemplatePicker({ onSelect, onSkip }: TemplatePickerProps
                   <p className="text-xs text-muted-foreground mt-1 line-clamp-2">
                     {t.description}
                   </p>
-                  <div className="flex items-center gap-3 mt-2">
+                  <div className="flex items-center gap-3 mt-2 flex-wrap">
                     <div className="flex items-center gap-1 text-xs text-muted-foreground">
                       <MapPin className="h-3 w-3" />
                       {t.location.latitude.toFixed(1)}, {t.location.longitude.toFixed(1)}
@@ -105,6 +106,19 @@ export default function TemplatePicker({ onSelect, onSkip }: TemplatePickerProps
                     <span className="text-xs text-muted-foreground">
                       {t.component_count} components
                     </span>
+                    {t.category === "fref" && (
+                      <>
+                        <Badge variant="outline" className="text-[10px] border-emerald-500/30 text-emerald-500">
+                          50 households
+                        </Badge>
+                        <Badge variant="outline" className="text-[10px] border-emerald-500/30 text-emerald-500">
+                          3-day autonomy
+                        </Badge>
+                        <Badge variant="outline" className="text-[10px] border-emerald-500/30 text-emerald-500">
+                          Cyclone-rated
+                        </Badge>
+                      </>
+                    )}
                   </div>
                 </div>
                 {selecting === t.id && (

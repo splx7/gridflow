@@ -2,11 +2,12 @@ import uuid
 import zlib
 
 import numpy as np
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, HTTPException, Request, UploadFile, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.deps import get_current_user
+from app.core.rate_limit import weather_limiter
 from app.models.database import get_db
 from app.models.project import Project
 from app.models.load_profile import LoadProfile
@@ -43,13 +44,17 @@ async def _get_user_project(
     "/{project_id}/weather/pvgis",
     response_model=WeatherDatasetResponse,
     status_code=status.HTTP_201_CREATED,
+    summary="Fetch PVGIS weather data",
+    description="Download a Typical Meteorological Year dataset from the PVGIS API for the project location.",
 )
 async def fetch_pvgis(
     project_id: uuid.UUID,
     body: PVGISRequest,
+    request: Request,
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    weather_limiter.check(request)
     project = await _get_user_project(project_id, user, db)
 
     from app.services.weather_service import fetch_pvgis_tmy
@@ -76,6 +81,8 @@ async def fetch_pvgis(
     "/{project_id}/weather/upload",
     response_model=WeatherDatasetResponse,
     status_code=status.HTTP_201_CREATED,
+    summary="Upload weather CSV",
+    description="Upload a TMY weather dataset from a CSV file with GHI, DNI, DHI, temperature, and wind speed.",
 )
 async def upload_weather(
     project_id: uuid.UUID,
@@ -106,7 +113,12 @@ async def upload_weather(
     return dataset
 
 
-@router.get("/{project_id}/weather", response_model=list[WeatherDatasetResponse])
+@router.get(
+    "/{project_id}/weather",
+    response_model=list[WeatherDatasetResponse],
+    summary="List weather datasets",
+    description="Return all weather datasets associated with a project.",
+)
 async def list_weather(
     project_id: uuid.UUID,
     user: User = Depends(get_current_user),
@@ -306,6 +318,20 @@ _SCENARIO_DEFAULTS: dict[str, dict] = {
         "seasonal_amp": 0.4,
         "peak_season": "summer",
     },
+    "rural_village": {
+        "name": "Rural Village (Pacific / FREF)",
+        "profile_type": "rural_village",
+        "annual_kwh": 55_000,
+        "hourly_shape": [
+            0.12, 0.10, 0.10, 0.10, 0.10, 0.15,
+            0.40, 0.35, 0.25, 0.20, 0.20, 0.20,
+            0.25, 0.25, 0.25, 0.30, 0.50, 0.75,
+            1.00, 0.95, 0.80, 0.55, 0.30, 0.15,
+        ],
+        "weekend_factor": 1.05,
+        "seasonal_amp": 0.10,
+        "peak_season": "winter",
+    },
 }
 
 
@@ -347,6 +373,8 @@ def _generate_synthetic_profile(scenario_cfg: dict, annual_kwh: float) -> np.nda
     "/{project_id}/load-profiles/generate",
     response_model=LoadProfileResponse,
     status_code=status.HTTP_201_CREATED,
+    summary="Generate synthetic load profile",
+    description="Generate an 8760-hour load profile from a built-in scenario template or composite of scenarios.",
 )
 async def generate_load_profile(
     project_id: uuid.UUID,
@@ -437,14 +465,17 @@ async def generate_load_profile(
     return profile
 
 
-@router.get("/{project_id}/weather/{dataset_id}/preview")
+@router.get(
+    "/{project_id}/weather/{dataset_id}/preview",
+    summary="Preview weather dataset",
+    description="Return monthly average GHI and temperature values for dashboard preview charts.",
+)
 async def weather_preview(
     project_id: uuid.UUID,
     dataset_id: uuid.UUID,
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Return monthly GHI averages and temperature averages for preview charts."""
     await _get_user_project(project_id, user, db)
     result = await db.execute(
         select(WeatherDataset).where(
@@ -479,14 +510,17 @@ async def weather_preview(
     }
 
 
-@router.get("/{project_id}/load-profiles/{profile_id}/preview")
+@router.get(
+    "/{project_id}/load-profiles/{profile_id}/preview",
+    summary="Preview load profile",
+    description="Return 24-hour average load shape, peak, min, and annual energy for preview charts.",
+)
 async def load_profile_preview(
     project_id: uuid.UUID,
     profile_id: uuid.UUID,
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Return 24-hour average load shape for preview charts."""
     await _get_user_project(project_id, user, db)
     result = await db.execute(
         select(LoadProfile).where(
@@ -512,7 +546,12 @@ async def load_profile_preview(
     }
 
 
-@router.get("/{project_id}/load-profiles", response_model=list[LoadProfileResponse])
+@router.get(
+    "/{project_id}/load-profiles",
+    response_model=list[LoadProfileResponse],
+    summary="List load profiles",
+    description="Return all load profiles belonging to a project.",
+)
 async def list_load_profiles(
     project_id: uuid.UUID,
     user: User = Depends(get_current_user),
@@ -529,6 +568,8 @@ async def list_load_profiles(
     "/{project_id}/load-profiles",
     response_model=LoadProfileResponse,
     status_code=status.HTTP_201_CREATED,
+    summary="Upload load profile CSV",
+    description="Upload an 8760-row CSV file of hourly kW load values.",
 )
 async def upload_load_profile(
     project_id: uuid.UUID,

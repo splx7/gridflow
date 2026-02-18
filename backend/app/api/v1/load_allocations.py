@@ -36,6 +36,8 @@ async def _get_user_project(
     "/{project_id}/load-allocations",
     response_model=LoadAllocationResponse,
     status_code=status.HTTP_201_CREATED,
+    summary="Create load allocation",
+    description="Assign a fraction of a load profile to a bus in the network topology.",
 )
 async def create_load_allocation(
     project_id: uuid.UUID,
@@ -87,7 +89,12 @@ async def create_load_allocation(
     return allocation
 
 
-@router.get("/{project_id}/load-allocations", response_model=list[LoadAllocationResponse])
+@router.get(
+    "/{project_id}/load-allocations",
+    response_model=list[LoadAllocationResponse],
+    summary="List load allocations",
+    description="Return all load allocations for a project's network.",
+)
 async def list_load_allocations(
     project_id: uuid.UUID,
     user: User = Depends(get_current_user),
@@ -103,6 +110,8 @@ async def list_load_allocations(
 @router.patch(
     "/{project_id}/load-allocations/{allocation_id}",
     response_model=LoadAllocationResponse,
+    summary="Update load allocation",
+    description="Partially update a load allocation's fraction, power factor, or bus assignment.",
 )
 async def update_load_allocation(
     project_id: uuid.UUID,
@@ -132,6 +141,8 @@ async def update_load_allocation(
 @router.delete(
     "/{project_id}/load-allocations/{allocation_id}",
     status_code=status.HTTP_204_NO_CONTENT,
+    summary="Delete load allocation",
+    description="Remove a load allocation from the project's network.",
 )
 async def delete_load_allocation(
     project_id: uuid.UUID,

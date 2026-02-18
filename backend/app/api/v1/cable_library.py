@@ -6,13 +6,16 @@ from engine.network.transformer_model import get_transformer_library
 router = APIRouter()
 
 
-@router.get("/cable-library")
+@router.get(
+    "/cable-library",
+    summary="List cables",
+    description="Return the built-in cable library with optional filtering by voltage class, material, or minimum ampacity.",
+)
 async def list_cables(
     voltage_class: str | None = Query(default=None, pattern="^(lv|mv)$"),
     material: str | None = Query(default=None, pattern="^(Cu|Al)$"),
     min_ampacity: float | None = Query(default=None, ge=0),
 ):
-    """Return standard cable library, optionally filtered."""
     if voltage_class or material or min_ampacity is not None:
         cables = filter_cables(voltage_class, material, min_ampacity)
         return [
@@ -33,7 +36,10 @@ async def list_cables(
     return get_cable_library()
 
 
-@router.get("/transformer-library")
+@router.get(
+    "/transformer-library",
+    summary="List transformers",
+    description="Return the built-in transformer library with standard ratings and impedance data.",
+)
 async def list_transformers():
-    """Return standard transformer library."""
     return get_transformer_library()

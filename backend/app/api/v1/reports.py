@@ -3,13 +3,14 @@ import uuid
 import zlib
 
 import numpy as np
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import StreamingResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.core.deps import get_current_user
+from app.core.rate_limit import report_limiter
 from app.models.database import get_db
 from app.models.project import Project
 from app.models.simulation import Simulation, SimulationResult
@@ -184,12 +185,18 @@ def _compute_summary(
     return summary
 
 
-@router.get("/{simulation_id}/report/pdf")
+@router.get(
+    "/{simulation_id}/report/pdf",
+    summary="Download PDF report",
+    description="Generate and download a full feasibility study PDF report for a completed simulation.",
+)
 async def download_pdf_report(
     simulation_id: uuid.UUID,
+    request: Request,
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    report_limiter.check(request)
     # Load simulation + result
     result = await db.execute(
         select(Simulation)
@@ -285,6 +292,38 @@ async def download_pdf_report(
 
     summary = _compute_summary(timeseries, components)
 
+    # Detect FREF metadata: check if any component has cyclone_derating_pct
+    # or if the project name suggests FREF
+    fref_metadata = None
+    has_cyclone = any(
+        c.get("config", {}).get("cyclone_derating_pct")
+        for c in components
+    )
+    if has_cyclone or "fref" in (project.name or "").lower():
+        from engine.economics.fiji_presets import (
+            FIJI_PRESETS,
+            battery_autonomy_kwh,
+            cost_per_household,
+            diesel_displacement_pct,
+        )
+
+        annual_load = summary.get("annual_load_kwh", 0)
+        annual_re = summary.get("annual_pv_kwh", 0) + summary.get("annual_wind_kwh", 0)
+        daily_load = annual_load / 365.0 if annual_load > 0 else 0.0
+        npc = economics.get("npc", 0)
+
+        fref_metadata = {
+            "num_households": 50,
+            "cost_per_household": cost_per_household(npc, 50),
+            "autonomy_days": 3,
+            "required_battery_kwh": battery_autonomy_kwh(daily_load, autonomy_days=3),
+            "diesel_displacement_pct": diesel_displacement_pct(annual_re, annual_load),
+            "co2_avoided_kg_year": annual_re * 0.3 * FIJI_PRESETS["co2_kg_per_litre_diesel"],
+            "cyclone_derating_pct": FIJI_PRESETS["cyclone_derating_pct"],
+            "logistics_premium_pct": FIJI_PRESETS["logistics_premium_pct"],
+            "fea_tariff_fjd": FIJI_PRESETS["fea_tariff_fjd_per_kwh"],
+        }
+
     from engine.reporting.pdf_report import generate_pdf_report
 
     pdf_buffer = generate_pdf_report(
@@ -304,6 +343,7 @@ async def download_pdf_report(
         sensitivity_results=sr.sensitivity_results,
         buses=buses if buses else None,
         branches=branches_data if branches_data else None,
+        fref_metadata=fref_metadata,
     )
 
     filename = f"gridflow_{project.name}_{sim.name}.pdf".replace(" ", "_")

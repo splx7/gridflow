@@ -46,6 +46,8 @@ async def _get_user_project(
 @router.post(
     "/{project_id}/advisor/recommend",
     response_model=AdvisorResponse,
+    summary="Get system recommendations",
+    description="Generate component sizing recommendations based on load profile, goals, and site conditions.",
 )
 async def get_recommendations(
     project_id: uuid.UUID,
@@ -165,6 +167,8 @@ async def get_recommendations(
 @router.post(
     "/{project_id}/advisor/evaluate",
     response_model=SystemHealthResponse,
+    summary="Evaluate system health",
+    description="Analyze a proposed system configuration and return estimates with sizing warnings.",
 )
 async def evaluate_system_health(
     project_id: uuid.UUID,
@@ -211,6 +215,8 @@ async def evaluate_system_health(
 @router.get(
     "/{project_id}/advisor/bess-recommendation",
     response_model=BESSRecommendationResponse,
+    summary="Get BESS sizing recommendation",
+    description="Analyze hourly surplus/deficit from a completed simulation to recommend optimal battery capacity and power rating.",
 )
 async def get_bess_recommendation(
     project_id: uuid.UUID,
@@ -221,12 +227,6 @@ async def get_bess_recommendation(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Recommend BESS sizing based on completed simulation results.
-
-    Analyzes the hourly surplus/deficit from an existing simulation to
-    determine optimal battery capacity and power rating that meets the
-    specified unmet load and renewable fraction targets.
-    """
     await _get_user_project(project_id, user, db)
 
     # Load simulation with results

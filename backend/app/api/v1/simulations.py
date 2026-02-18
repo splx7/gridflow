@@ -3,11 +3,12 @@ import uuid
 import zlib
 
 import numpy as np
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.deps import get_current_user
+from app.core.rate_limit import simulation_limiter
 from app.models.database import get_db
 from app.models.project import Project
 from app.models.simulation import Simulation, SimulationResult
@@ -42,13 +43,17 @@ def _safe_float(value: float | None) -> float | None:
     "/projects/{project_id}/simulations",
     response_model=SimulationResponse,
     status_code=status.HTTP_201_CREATED,
+    summary="Run simulation",
+    description="Create a new simulation for a project and dispatch the Celery task for execution.",
 )
 async def create_simulation(
     project_id: uuid.UUID,
     body: SimulationCreate,
+    request: Request,
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    simulation_limiter.check(request)
     result = await db.execute(
         select(Project).where(Project.id == project_id, Project.user_id == user.id)
     )
@@ -79,7 +84,12 @@ async def create_simulation(
     return simulation
 
 
-@router.get("/projects/{project_id}/simulations", response_model=list[SimulationResponse])
+@router.get(
+    "/projects/{project_id}/simulations",
+    response_model=list[SimulationResponse],
+    summary="List simulations",
+    description="Return all simulations for a project, ordered by creation date descending.",
+)
 async def list_simulations(
     project_id: uuid.UUID,
     user: User = Depends(get_current_user),
@@ -102,6 +112,8 @@ async def list_simulations(
 @router.delete(
     "/projects/{project_id}/simulations/{simulation_id}",
     status_code=status.HTTP_204_NO_CONTENT,
+    summary="Delete simulation",
+    description="Delete a simulation and its associated results.",
 )
 async def delete_simulation(
     project_id: uuid.UUID,
@@ -133,7 +145,12 @@ async def delete_simulation(
     await db.commit()
 
 
-@router.get("/simulations/{simulation_id}/status", response_model=SimulationStatusResponse)
+@router.get(
+    "/simulations/{simulation_id}/status",
+    response_model=SimulationStatusResponse,
+    summary="Get simulation status",
+    description="Check the current status of a simulation (pending, running, completed, or failed).",
+)
 async def get_simulation_status(
     simulation_id: uuid.UUID,
     user: User = Depends(get_current_user),
@@ -150,7 +167,12 @@ async def get_simulation_status(
     return sim
 
 
-@router.get("/simulations/{simulation_id}/results/economics", response_model=EconomicsResponse)
+@router.get(
+    "/simulations/{simulation_id}/results/economics",
+    response_model=EconomicsResponse,
+    summary="Get economic results",
+    description="Return NPC, LCOE, IRR, payback period, and cost breakdown for a completed simulation.",
+)
 async def get_economics(
     simulation_id: uuid.UUID,
     user: User = Depends(get_current_user),
@@ -181,7 +203,11 @@ async def get_economics(
     }
 
 
-@router.get("/simulations/{simulation_id}/results/timeseries")
+@router.get(
+    "/simulations/{simulation_id}/results/timeseries",
+    summary="Get time-series results",
+    description="Return 8760-hour time-series arrays for load, PV, wind, battery, generator, and grid flows.",
+)
 async def get_timeseries(
     simulation_id: uuid.UUID,
     user: User = Depends(get_current_user),
@@ -211,13 +237,16 @@ async def get_timeseries(
     }
 
 
-@router.get("/simulations/{simulation_id}/results/network")
+@router.get(
+    "/simulations/{simulation_id}/results/network",
+    summary="Get network results",
+    description="Return power flow summary and bus voltage time-series for a multi-bus simulation.",
+)
 async def get_network_results(
     simulation_id: uuid.UUID,
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Get network / power flow results for a simulation (multi_bus mode)."""
     result = await db.execute(
         select(SimulationResult)
         .join(Simulation)
@@ -237,4 +266,35 @@ async def get_network_results(
     return {
         "power_flow_summary": sr.power_flow_summary,
         "ts_bus_voltages": sr.ts_bus_voltages,
+    }
+
+
+@router.get(
+    "/admin/celery-status",
+    summary="Celery worker status",
+    description="Return active, reserved, and scheduled tasks from all Celery workers. Requires authentication.",
+)
+async def celery_status(
+    user: User = Depends(get_current_user),
+):
+    from app.worker.celery_app import celery_app
+
+    inspect = celery_app.control.inspect(timeout=2.0)
+    active = inspect.active() or {}
+    reserved = inspect.reserved() or {}
+    scheduled = inspect.scheduled() or {}
+
+    workers = {}
+    for worker_name in set(list(active) + list(reserved) + list(scheduled)):
+        workers[worker_name] = {
+            "active": len(active.get(worker_name, [])),
+            "reserved": len(reserved.get(worker_name, [])),
+            "scheduled": len(scheduled.get(worker_name, [])),
+        }
+
+    return {
+        "workers": workers,
+        "total_active": sum(w["active"] for w in workers.values()),
+        "total_reserved": sum(w["reserved"] for w in workers.values()),
+        "worker_count": len(workers),
     }

@@ -41,6 +41,8 @@ def _decompress(data: bytes) -> np.ndarray:
 @router.post(
     "/{project_id}/contingency-analysis",
     response_model=ContingencyResponse,
+    summary="Run N-1 contingency analysis",
+    description="Remove each branch one at a time, re-run power flow, and check for voltage/thermal violations against the specified grid code.",
 )
 async def run_contingency_analysis(
     project_id: uuid.UUID,
@@ -48,11 +50,6 @@ async def run_contingency_analysis(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Run N-1 contingency analysis on the project network.
-
-    Removes each branch one at a time, re-runs power flow, and checks
-    for voltage/thermal violations against the specified grid code.
-    """
     # Validate project ownership
     result = await db.execute(
         select(Project).where(Project.id == project_id, Project.user_id == user.id)
@@ -183,11 +180,12 @@ async def run_contingency_analysis(
 @grid_codes_router.get(
     "/grid-codes",
     response_model=GridCodeListResponse,
+    summary="List grid code profiles",
+    description="Return all available grid code profiles (IEC, IEEE 1547, Fiji, etc.).",
 )
 async def list_grid_codes(
     user: User = Depends(get_current_user),
 ):
-    """List all available grid code profiles."""
     from engine.network.grid_codes import list_profiles
     profiles = list_profiles()
     return GridCodeListResponse(profiles=profiles)
@@ -196,12 +194,13 @@ async def list_grid_codes(
 @grid_codes_router.get(
     "/grid-codes/{key}",
     response_model=GridCodeDetailResponse,
+    summary="Get grid code profile detail",
+    description="Return voltage and thermal limits for a specific grid code profile.",
 )
 async def get_grid_code_detail(
     key: str,
     user: User = Depends(get_current_user),
 ):
-    """Get detailed information for a specific grid code profile."""
     from engine.network.grid_codes import get_profile
 
     try:

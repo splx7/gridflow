@@ -39,7 +39,12 @@ def _decompress(data: bytes) -> np.ndarray:
     return np.frombuffer(zlib.decompress(data), dtype=np.float64)
 
 
-@router.post("/{project_id}/power-flow", response_model=PowerFlowResponse)
+@router.post(
+    "/{project_id}/power-flow",
+    response_model=PowerFlowResponse,
+    summary="Run power flow analysis",
+    description="Execute Newton-Raphson AC power flow on the project's multi-bus network and return bus voltages, branch flows, and violations.",
+)
 async def run_power_flow(
     project_id: uuid.UUID,
     body: PowerFlowRequest,

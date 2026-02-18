@@ -6,11 +6,12 @@ from sqlalchemy import text
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
+from app.core.logging import RequestLoggingMiddleware, setup_logging
 from app.api.v1 import (
     auth, projects, components, simulations, weather, comparisons, advisor,
     buses, branches, load_allocations, power_flow, cable_library,
     network_generate, sensitivity, reports, contingency,
-    component_templates, project_templates,
+    component_templates, project_templates, fref,
 )
 from app.models.database import get_engine
 
@@ -22,12 +23,16 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
 
 
 def create_app() -> FastAPI:
+    is_prod = getattr(settings, "environment", "development") == "production"
+    setup_logging(json_format=is_prod)
+
     application = FastAPI(
         title=settings.app_name,
         version="0.1.0",
         lifespan=lifespan,
     )
 
+    application.add_middleware(RequestLoggingMiddleware)
     application.add_middleware(
         CORSMiddleware,
         allow_origins=[o.strip() for o in settings.cors_origins.split(",") if o.strip()],
@@ -74,6 +79,9 @@ def create_app() -> FastAPI:
     )
     application.include_router(
         project_templates.router, prefix="/api/v1", tags=["project-templates"]
+    )
+    application.include_router(
+        fref.router, prefix="/api/v1", tags=["fref"]
     )
 
     @application.get("/health")

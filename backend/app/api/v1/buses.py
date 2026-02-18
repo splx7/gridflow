@@ -30,6 +30,8 @@ async def _get_user_project(
     "/{project_id}/buses",
     response_model=BusResponse,
     status_code=status.HTTP_201_CREATED,
+    summary="Create bus",
+    description="Add a new electrical bus to the project's network topology.",
 )
 async def create_bus(
     project_id: uuid.UUID,
@@ -45,7 +47,12 @@ async def create_bus(
     return bus
 
 
-@router.get("/{project_id}/buses", response_model=list[BusResponse])
+@router.get(
+    "/{project_id}/buses",
+    response_model=list[BusResponse],
+    summary="List buses",
+    description="Return all buses in a project's network.",
+)
 async def list_buses(
     project_id: uuid.UUID,
     user: User = Depends(get_current_user),
@@ -56,7 +63,12 @@ async def list_buses(
     return result.scalars().all()
 
 
-@router.get("/{project_id}/buses/{bus_id}", response_model=BusResponse)
+@router.get(
+    "/{project_id}/buses/{bus_id}",
+    response_model=BusResponse,
+    summary="Get bus",
+    description="Retrieve a single bus by ID within a project.",
+)
 async def get_bus(
     project_id: uuid.UUID,
     bus_id: uuid.UUID,
@@ -73,7 +85,12 @@ async def get_bus(
     return bus
 
 
-@router.patch("/{project_id}/buses/{bus_id}", response_model=BusResponse)
+@router.patch(
+    "/{project_id}/buses/{bus_id}",
+    response_model=BusResponse,
+    summary="Update bus",
+    description="Partially update a bus's name, type, voltage, or position.",
+)
 async def update_bus(
     project_id: uuid.UUID,
     bus_id: uuid.UUID,
@@ -97,7 +114,12 @@ async def update_bus(
     return bus
 
 
-@router.delete("/{project_id}/buses/{bus_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete(
+    "/{project_id}/buses/{bus_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Delete bus",
+    description="Remove a bus from the project's network topology.",
+)
 async def delete_bus(
     project_id: uuid.UUID,
     bus_id: uuid.UUID,

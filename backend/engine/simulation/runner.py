@@ -653,6 +653,16 @@ class SimulationRunner:
                     pv_cap_kwp / inv_cap,
                 )
 
+            # Apply cyclone derating if configured
+            cyclone_pct = float(pv_cfg.get("cyclone_derating_pct", 0))
+            if cyclone_pct > 0:
+                pv_output *= (1.0 - cyclone_pct / 100.0)
+                logger.info(
+                    "Cyclone derating applied: %.1f%% → output reduced to %.0f kWh/year",
+                    cyclone_pct,
+                    float(np.sum(pv_output)),
+                )
+
             logger.info(
                 "PV simulation complete: %.0f kWh/year",
                 float(np.sum(pv_output)),
@@ -945,4 +955,8 @@ class SimulationRunner:
             "generator_stats": generator_stats,
             "grid_stats": grid_stats,
             "dispatch_strategy": self.dispatch_strategy,
+            # FREF / cyclone derating flag
+            "cyclone_derating_applied": bool(
+                pv_cfg is not None and float(pv_cfg.get("cyclone_derating_pct", 0)) > 0
+            ),
         }

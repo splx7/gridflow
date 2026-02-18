@@ -153,6 +153,14 @@ const SCENARIO_PRESETS: ScenarioPreset[] = [
     icon: <Droplets className="h-4 w-4" />,
     color: "text-blue-500",
   },
+  {
+    key: "rural_village",
+    label: "Rural Village (FREF)",
+    description: "Pacific island village — strong evening peak, cooking bump, low daytime",
+    annual_kwh: 55_000,
+    icon: <Tent className="h-4 w-4" />,
+    color: "text-emerald-400",
+  },
 ];
 
 function formatMWh(kwh: number): string {

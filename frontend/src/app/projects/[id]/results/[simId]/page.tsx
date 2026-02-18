@@ -46,6 +46,7 @@ import {
   FileText,
 } from "lucide-react";
 import { HelpDrawer } from "@/components/ui/help-drawer";
+import { ResultsSkeleton } from "@/components/ui/skeleton";
 import {
   exportTimeseriesCSV,
   exportEconomicsCSV,
@@ -118,11 +119,7 @@ export default function ResultsPage() {
   }, [isAuthenticated, simId, projectId]);
 
   if (isLoading || loading) {
-    return (
-      <div className="flex items-center justify-center min-h-screen">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
-      </div>
-    );
+    return <ResultsSkeleton />;
   }
 
   const strategyLabel = simMeta?.dispatch_strategy

@@ -42,6 +42,8 @@ async def _get_user_project(
 @router.post(
     "/{project_id}/network/auto-generate",
     response_model=AutoGenerateResponse,
+    summary="Auto-generate network topology",
+    description="Generate a radial network topology from project components. Replaces existing buses, branches, and load allocations.",
 )
 async def auto_generate_network(
     project_id: uuid.UUID,
@@ -49,12 +51,6 @@ async def auto_generate_network(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Auto-generate a radial network topology from project components.
-
-    Deletes existing buses/branches/load-allocations, generates a new
-    topology based on the project's components, creates all DB objects,
-    assigns components to buses, and sets network_mode to multi_bus.
-    """
     project = await _get_user_project(project_id, user, db)
 
     # Clear component bus_id references first (before deleting buses)

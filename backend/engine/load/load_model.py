@@ -49,10 +49,23 @@ _INDUSTRIAL_HOURLY = np.array(
     dtype=np.float64,
 )
 
+# Rural village: very low overnight, cooking bump at dawn, strong evening peak.
+# Typical Pacific Island / rural developing community pattern.
+_RURAL_VILLAGE_HOURLY = np.array(
+    [
+        0.10, 0.10, 0.10, 0.10, 0.12, 0.15,  # 00-05
+        0.40, 0.35, 0.25, 0.20, 0.20, 0.22,  # 06-11
+        0.25, 0.22, 0.20, 0.25, 0.35, 0.60,  # 12-17
+        1.00, 0.95, 0.80, 0.55, 0.30, 0.15,  # 18-23
+    ],
+    dtype=np.float64,
+)
+
 _PROFILES = {
     "residential": _RESIDENTIAL_HOURLY,
     "commercial": _COMMERCIAL_HOURLY,
     "industrial": _INDUSTRIAL_HOURLY,
+    "rural_village": _RURAL_VILLAGE_HOURLY,
 }
 
 # Monthly seasonal multipliers (index 0 = January).
@@ -75,6 +88,25 @@ _MONTHLY_SEASONAL = np.array(
     dtype=np.float64,
 )
 
+# Southern-hemisphere pattern: higher Jun-Aug (winter lighting), lower Dec-Feb.
+_MONTHLY_SEASONAL_SOUTHERN = np.array(
+    [
+        0.90,  # Jan (summer)
+        0.92,  # Feb
+        0.95,  # Mar
+        1.00,  # Apr
+        1.05,  # May
+        1.12,  # Jun (winter)
+        1.15,  # Jul
+        1.10,  # Aug
+        1.00,  # Sep
+        0.95,  # Oct
+        0.92,  # Nov
+        0.88,  # Dec (summer)
+    ],
+    dtype=np.float64,
+)
+
 # Day-of-week multipliers (Mon=0 ... Sun=6).
 _DOW_MULTIPLIER_RESIDENTIAL = np.array(
     [0.95, 0.95, 0.95, 0.95, 1.00, 1.10, 1.10], dtype=np.float64
@@ -85,11 +117,16 @@ _DOW_MULTIPLIER_COMMERCIAL = np.array(
 _DOW_MULTIPLIER_INDUSTRIAL = np.array(
     [1.00, 1.00, 1.00, 1.00, 1.00, 0.90, 0.85], dtype=np.float64
 )
+# Rural village: minimal weekday variation (subsistence patterns consistent).
+_DOW_MULTIPLIER_RURAL_VILLAGE = np.array(
+    [0.98, 0.98, 0.98, 0.98, 1.00, 1.05, 1.05], dtype=np.float64
+)
 
 _DOW_MULTIPLIERS = {
     "residential": _DOW_MULTIPLIER_RESIDENTIAL,
     "commercial": _DOW_MULTIPLIER_COMMERCIAL,
     "industrial": _DOW_MULTIPLIER_INDUSTRIAL,
+    "rural_village": _DOW_MULTIPLIER_RURAL_VILLAGE,
 }
 
 
@@ -103,6 +140,7 @@ def generate_load_profile(
     profile_type: str = "residential",
     noise_factor: float = 0.1,
     seed: Optional[int] = None,
+    hemisphere: str = "northern",
 ) -> NDArray[np.float64]:
     """Create an 8760-element hourly load profile.
 
@@ -111,12 +149,17 @@ def generate_load_profile(
     annual_kwh : float
         Total energy consumption target for the year (kWh).
     profile_type : str
-        One of ``'residential'``, ``'commercial'``, or ``'industrial'``.
+        One of ``'residential'``, ``'commercial'``, ``'industrial'``,
+        or ``'rural_village'``.
     noise_factor : float
         Standard deviation of Gaussian noise as a fraction of the hourly
         value.  ``0.0`` produces a perfectly deterministic profile.
     seed : int, optional
         Random seed for reproducibility.
+    hemisphere : str
+        ``'northern'`` or ``'southern'``.  Selects the seasonal pattern.
+        Southern hemisphere has higher winter (Jun-Aug) and lower summer
+        (Dec-Feb) multipliers.
 
     Returns
     -------
@@ -141,6 +184,12 @@ def generate_load_profile(
     hourly_shape = _PROFILES[profile_type]
     dow_mult = _DOW_MULTIPLIERS[profile_type]
 
+    # Select seasonal pattern based on hemisphere
+    if hemisphere.lower() == "southern":
+        monthly_seasonal = _MONTHLY_SEASONAL_SOUTHERN
+    else:
+        monthly_seasonal = _MONTHLY_SEASONAL
+
     rng = np.random.default_rng(seed)
 
     # Build the raw 8760 profile.
@@ -154,7 +203,7 @@ def generate_load_profile(
         month = _day_to_month(day)
         day_of_week = day % 7  # 0 = Monday
 
-        seasonal = _MONTHLY_SEASONAL[month]
+        seasonal = monthly_seasonal[month]
         weekday = dow_mult[day_of_week]
 
         for h in range(24):

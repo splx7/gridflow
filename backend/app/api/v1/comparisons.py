@@ -12,7 +12,11 @@ from app.schemas.simulation import ComparisonRequest
 router = APIRouter()
 
 
-@router.post("/")
+@router.post(
+    "/",
+    summary="Compare simulations",
+    description="Compare economic and performance metrics across multiple completed simulations.",
+)
 async def compare_simulations(
     body: ComparisonRequest,
     user: User = Depends(get_current_user),

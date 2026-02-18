@@ -41,6 +41,9 @@ import {
   AlertTriangle,
   Network,
   RefreshCw,
+  Shield,
+  ChevronDown,
+  ChevronUp,
 } from "lucide-react";
 import { ThemeToggle } from "@/components/ui/theme-toggle";
 import { useKeyboardShortcuts } from "@/hooks/use-keyboard-shortcuts";
@@ -95,6 +98,16 @@ export default function ProjectPage() {
     discount_rate: 0.08,
   });
   const [savingSettings, setSavingSettings] = useState(false);
+  const [showFrefPanel, setShowFrefPanel] = useState(false);
+
+  // Detect FREF mode from component configs or project name
+  const isFrefProject = useMemo(() => {
+    const hasCycloneDerating = components.some(
+      (c) => c.config?.cyclone_derating_pct != null
+    );
+    const nameContainsFref = (currentProject?.name || "").toLowerCase().includes("fref");
+    return hasCycloneDerating || nameContainsFref;
+  }, [components, currentProject?.name]);
 
   // Keyboard shortcuts: Cmd+S saves project, Cmd+Enter goes to simulate
   useKeyboardShortcuts({
@@ -243,6 +256,15 @@ export default function ProjectPage() {
                 <Zap className="h-3.5 w-3.5 text-white" />
               </div>
               <h1 className="text-lg font-semibold">{currentProject.name}</h1>
+              {isFrefProject && (
+                <Badge
+                  className="bg-emerald-500/10 text-emerald-500 hover:bg-emerald-500/20 cursor-pointer text-[10px]"
+                  onClick={() => setShowFrefPanel((v) => !v)}
+                >
+                  <Shield className="h-3 w-3 mr-1" />
+                  FREF
+                </Badge>
+              )}
             </div>
             <div className="hidden sm:flex items-center gap-1.5 text-xs text-muted-foreground">
               <MapPin className="h-3 w-3" />
@@ -297,6 +319,56 @@ export default function ProjectPage() {
           </div>
         </div>
       </header>
+
+      {/* FREF Info Panel */}
+      {isFrefProject && showFrefPanel && (
+        <div className="border-b border-emerald-500/20 bg-emerald-500/5 px-4 py-3">
+          <div className="max-w-4xl mx-auto">
+            <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center gap-2">
+                <Shield className="h-4 w-4 text-emerald-500" />
+                <span className="text-sm font-medium text-emerald-500">
+                  Fiji Rural Electrification Fund (FREF) Project
+                </span>
+              </div>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-6 w-6 p-0"
+                onClick={() => setShowFrefPanel(false)}
+              >
+                <ChevronUp className="h-3.5 w-3.5" />
+              </Button>
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+              <div className="space-y-0.5">
+                <p className="text-muted-foreground">Households</p>
+                <p className="font-medium">50</p>
+              </div>
+              <div className="space-y-0.5">
+                <p className="text-muted-foreground">Battery Autonomy</p>
+                <p className="font-medium">3 days</p>
+              </div>
+              <div className="space-y-0.5">
+                <p className="text-muted-foreground">Cyclone Derating</p>
+                <p className="font-medium">
+                  {components.find((c) => c.config?.cyclone_derating_pct != null)
+                    ? `${components.find((c) => c.config?.cyclone_derating_pct != null)!.config.cyclone_derating_pct}%`
+                    : "5%"}
+                </p>
+              </div>
+              <div className="space-y-0.5">
+                <p className="text-muted-foreground">Grid Code</p>
+                <p className="font-medium">Fiji (FEA)</p>
+              </div>
+            </div>
+            <p className="text-[11px] text-muted-foreground mt-2">
+              FREF compliance: 30% logistics premium, FJ$3.50/L diesel, FEA tariff $0.3401 FJD/kWh.
+              PDF report includes FREF-specific cost-per-household and autonomy analysis.
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* Tabs Content */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col">

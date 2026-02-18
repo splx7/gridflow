@@ -30,6 +30,8 @@ async def _get_user_project(
     "/{project_id}/components",
     response_model=ComponentResponse,
     status_code=status.HTTP_201_CREATED,
+    summary="Add component",
+    description="Add a new component (PV, battery, generator, etc.) to a project.",
 )
 async def create_component(
     project_id: uuid.UUID,
@@ -45,7 +47,12 @@ async def create_component(
     return component
 
 
-@router.get("/{project_id}/components", response_model=list[ComponentResponse])
+@router.get(
+    "/{project_id}/components",
+    response_model=list[ComponentResponse],
+    summary="List components",
+    description="Return all components belonging to a project.",
+)
 async def list_components(
     project_id: uuid.UUID,
     user: User = Depends(get_current_user),
@@ -58,7 +65,12 @@ async def list_components(
     return result.scalars().all()
 
 
-@router.get("/{project_id}/components/{component_id}", response_model=ComponentResponse)
+@router.get(
+    "/{project_id}/components/{component_id}",
+    response_model=ComponentResponse,
+    summary="Get component",
+    description="Retrieve a single component by ID within a project.",
+)
 async def get_component(
     project_id: uuid.UUID,
     component_id: uuid.UUID,
@@ -77,7 +89,12 @@ async def get_component(
     return component
 
 
-@router.patch("/{project_id}/components/{component_id}", response_model=ComponentResponse)
+@router.patch(
+    "/{project_id}/components/{component_id}",
+    response_model=ComponentResponse,
+    summary="Update component",
+    description="Partially update a component's name, type, or configuration.",
+)
 async def update_component(
     project_id: uuid.UUID,
     component_id: uuid.UUID,
@@ -104,7 +121,10 @@ async def update_component(
 
 
 @router.delete(
-    "/{project_id}/components/{component_id}", status_code=status.HTTP_204_NO_CONTENT
+    "/{project_id}/components/{component_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Delete component",
+    description="Remove a component from a project.",
 )
 async def delete_component(
     project_id: uuid.UUID,

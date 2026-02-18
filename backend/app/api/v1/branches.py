@@ -42,6 +42,8 @@ async def _validate_bus(bus_id: uuid.UUID, project_id: uuid.UUID, db: AsyncSessi
     "/{project_id}/branches",
     response_model=BranchResponse,
     status_code=status.HTTP_201_CREATED,
+    summary="Create branch",
+    description="Add a cable or transformer branch connecting two buses in the project network.",
 )
 async def create_branch(
     project_id: uuid.UUID,
@@ -60,7 +62,12 @@ async def create_branch(
     return branch
 
 
-@router.get("/{project_id}/branches", response_model=list[BranchResponse])
+@router.get(
+    "/{project_id}/branches",
+    response_model=list[BranchResponse],
+    summary="List branches",
+    description="Return all branches (cables and transformers) in a project's network.",
+)
 async def list_branches(
     project_id: uuid.UUID,
     user: User = Depends(get_current_user),
@@ -73,7 +80,12 @@ async def list_branches(
     return result.scalars().all()
 
 
-@router.patch("/{project_id}/branches/{branch_id}", response_model=BranchResponse)
+@router.patch(
+    "/{project_id}/branches/{branch_id}",
+    response_model=BranchResponse,
+    summary="Update branch",
+    description="Partially update a branch's endpoints, type, or electrical parameters.",
+)
 async def update_branch(
     project_id: uuid.UUID,
     branch_id: uuid.UUID,
@@ -103,7 +115,12 @@ async def update_branch(
     return branch
 
 
-@router.delete("/{project_id}/branches/{branch_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete(
+    "/{project_id}/branches/{branch_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Delete branch",
+    description="Remove a branch from the project's network topology.",
+)
 async def delete_branch(
     project_id: uuid.UUID,
     branch_id: uuid.UUID,

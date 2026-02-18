@@ -1,0 +1,80 @@
+{
+  "id": "fref_village_fiji",
+  "name": "FREF Village — Fiji (50 Households)",
+  "description": "Fiji Rural Electrification Fund template for a 50-household village. Includes 50kWp PV array with 30% logistics premium, 530kWh LFP battery for 3-day autonomy, and 30kW backup diesel generator. Configured for Fiji grid code compliance and cyclone zone derating.",
+  "category": "fref",
+  "project": {
+    "latitude": -17.85,
+    "longitude": 177.95,
+    "lifetime_years": 20,
+    "discount_rate": 0.06,
+    "currency": "FJD"
+  },
+  "components": [
+    {
+      "component_type": "solar_pv",
+      "name": "Village PV Array (50kWp)",
+      "config": {
+        "capacity_kw": 50,
+        "tilt_deg": 18,
+        "azimuth_deg": 0,
+        "module_type": "monocrystalline",
+        "inverter_efficiency": 0.96,
+        "inverter_capacity_kw": 45,
+        "system_losses": 0.14,
+        "capital_cost_per_kw": 845,
+        "om_cost_per_kw_year": 13,
+        "lifetime_years": 25,
+        "derating_factor": 0.005,
+        "cyclone_derating_pct": 5
+      }
+    },
+    {
+      "component_type": "battery",
+      "name": "LFP Battery Bank (3-Day Autonomy)",
+      "config": {
+        "capacity_kwh": 530,
+        "max_charge_rate_kw": 100,
+        "max_discharge_rate_kw": 100,
+        "round_trip_efficiency": 0.92,
+        "min_soc": 0.10,
+        "max_soc": 0.95,
+        "initial_soc": 0.50,
+        "chemistry": "LFP",
+        "cycle_life": 6000,
+        "capital_cost_per_kwh": 455,
+        "replacement_cost_per_kwh": 350,
+        "om_cost_per_kwh_year": 5,
+        "lifetime_years": 15
+      }
+    },
+    {
+      "component_type": "diesel_generator",
+      "name": "Backup Genset (30kW)",
+      "config": {
+        "rated_power_kw": 30,
+        "min_load_ratio": 0.30,
+        "fuel_curve_a0": 0.246,
+        "fuel_curve_a1": 0.0845,
+        "fuel_price_per_liter": 1.56,
+        "capital_cost_per_kw": 650,
+        "om_cost_per_hour": 5,
+        "lifetime_hours": 20000,
+        "start_cost": 15
+      }
+    }
+  ],
+  "load": {
+    "scenario": "rural_village",
+    "annual_kwh": 55000
+  },
+  "fref_metadata": {
+    "num_households": 50,
+    "autonomy_days": 3,
+    "cyclone_zone": true,
+    "grid_code": "fiji",
+    "logistics_premium_pct": 30,
+    "smart_metering": true,
+    "smart_meter_cost_per_hh_usd": 150
+  }
+}

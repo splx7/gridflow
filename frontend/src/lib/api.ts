@@ -581,6 +581,17 @@ export async function listComponentTemplates(
   return data;
 }
 
+// FREF Analysis
+export async function getFREFAnalysis(
+  simulationId: string,
+  opts?: { num_households?: number; autonomy_days?: number }
+): Promise<Record<string, unknown>> {
+  const { data } = await api.get(`/simulations/${simulationId}/fref-analysis`, {
+    params: opts,
+  });
+  return data;
+}
+
 // Comparisons
 export async function compareSimulations(
   simulationIds: string[]

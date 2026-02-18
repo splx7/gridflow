@@ -24,9 +24,12 @@ def _load_templates() -> list[dict]:
     return _cache
 
 
-@router.get("/project-templates")
+@router.get(
+    "/project-templates",
+    summary="List project templates",
+    description="Return all available project templates with summaries, categories, and component counts.",
+)
 async def list_project_templates():
-    """Return all available project templates with summaries."""
     templates = _load_templates()
     return [
         {
@@ -44,9 +47,12 @@ async def list_project_templates():
     ]
 
 
-@router.get("/project-templates/{template_id}")
+@router.get(
+    "/project-templates/{template_id}",
+    summary="Get project template",
+    description="Return full template details including project config and component definitions.",
+)
 async def get_project_template(template_id: str):
-    """Return full template details."""
     templates = _load_templates()
     for t in templates:
         if t["id"] == template_id:

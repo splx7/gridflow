@@ -43,3 +43,7 @@ class RateLimiter:
 
 # Singleton instances
 auth_limiter = RateLimiter(max_requests=10, window_seconds=60)
+simulation_limiter = RateLimiter(max_requests=10, window_seconds=60)
+weather_limiter = RateLimiter(max_requests=5, window_seconds=60)
+report_limiter = RateLimiter(max_requests=5, window_seconds=60)
+sensitivity_limiter = RateLimiter(max_requests=3, window_seconds=60)

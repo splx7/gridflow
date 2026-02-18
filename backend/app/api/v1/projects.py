@@ -16,7 +16,13 @@ from app.schemas.project import ProjectCreate, ProjectResponse, ProjectUpdate
 router = APIRouter()
 
 
-@router.post("/", response_model=ProjectResponse, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/",
+    response_model=ProjectResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Create project",
+    description="Create a new microgrid project with location and economic parameters.",
+)
 async def create_project(
     body: ProjectCreate,
     user: User = Depends(get_current_user),
@@ -29,7 +35,12 @@ async def create_project(
     return project
 
 
-@router.get("/", response_model=list[ProjectResponse])
+@router.get(
+    "/",
+    response_model=list[ProjectResponse],
+    summary="List projects",
+    description="Return all projects owned by the current user, ordered by last update.",
+)
 async def list_projects(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
@@ -40,7 +51,12 @@ async def list_projects(
     return result.scalars().all()
 
 
-@router.get("/{project_id}", response_model=ProjectResponse)
+@router.get(
+    "/{project_id}",
+    response_model=ProjectResponse,
+    summary="Get project",
+    description="Retrieve a single project by ID.",
+)
 async def get_project(
     project_id: uuid.UUID,
     user: User = Depends(get_current_user),
@@ -55,7 +71,12 @@ async def get_project(
     return project
 
 
-@router.patch("/{project_id}", response_model=ProjectResponse)
+@router.patch(
+    "/{project_id}",
+    response_model=ProjectResponse,
+    summary="Update project",
+    description="Partially update a project's name, location, or economic parameters.",
+)
 async def update_project(
     project_id: uuid.UUID,
     body: ProjectUpdate,
@@ -77,7 +98,12 @@ async def update_project(
     return project
 
 
-@router.delete("/{project_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete(
+    "/{project_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Delete project",
+    description="Permanently delete a project and all associated data.",
+)
 async def delete_project(
     project_id: uuid.UUID,
     user: User = Depends(get_current_user),
@@ -94,13 +120,18 @@ async def delete_project(
     await db.commit()
 
 
-@router.post("/{project_id}/duplicate", response_model=ProjectResponse, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/{project_id}/duplicate",
+    response_model=ProjectResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Duplicate project",
+    description="Deep-copy a project and its components. Simulations are not copied.",
+)
 async def duplicate_project(
     project_id: uuid.UUID,
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Deep-copy a project and its components (not simulations)."""
     result = await db.execute(
         select(Project).where(Project.id == project_id, Project.user_id == user.id)
     )
@@ -139,13 +170,16 @@ async def duplicate_project(
     return new_project
 
 
-@router.get("/{project_id}/export")
+@router.get(
+    "/{project_id}/export",
+    summary="Export project as JSON",
+    description="Export a project's configuration and components as a downloadable JSON bundle.",
+)
 async def export_project(
     project_id: uuid.UUID,
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Export project config + components as JSON bundle."""
     result = await db.execute(
         select(Project).where(Project.id == project_id, Project.user_id == user.id)
     )
@@ -181,13 +215,18 @@ async def export_project(
     return JSONResponse(content=bundle)
 
 
-@router.post("/import", response_model=ProjectResponse, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/import",
+    response_model=ProjectResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Import project from JSON",
+    description="Create a new project from a previously exported JSON bundle, including all components.",
+)
 async def import_project(
     bundle: dict,
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Import a project from a JSON bundle."""
     proj_data = bundle.get("project")
     if not proj_data or not proj_data.get("name"):
         raise HTTPException(

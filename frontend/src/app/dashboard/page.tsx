@@ -50,6 +50,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { ThemeToggle } from "@/components/ui/theme-toggle";
 import TemplatePicker from "@/components/dashboard/template-picker";
+import { DashboardSkeleton } from "@/components/ui/skeleton";
 import type { ProjectTemplate } from "@/types";
 
 const LocationPicker = dynamic(
@@ -183,8 +184,18 @@ export default function DashboardPage() {
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="animate-spin h-8 w-8 border-2 border-primary border-t-transparent rounded-full" />
+      <div className="min-h-screen">
+        <header className="border-b border-border bg-background/80 backdrop-blur-lg sticky top-0 z-40">
+          <div className="max-w-7xl mx-auto px-4 py-4 flex items-center gap-3">
+            <div className="h-8 w-8 rounded-lg bg-gradient-to-br from-blue-500 to-cyan-500 flex items-center justify-center">
+              <Zap className="h-4 w-4 text-white" />
+            </div>
+            <h1 className="text-xl font-bold gradient-text">GridFlow</h1>
+          </div>
+        </header>
+        <main className="max-w-7xl mx-auto px-4 py-8">
+          <DashboardSkeleton />
+        </main>
       </div>
     );
   }

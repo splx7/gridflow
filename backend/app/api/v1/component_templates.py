@@ -21,11 +21,14 @@ def _load_templates() -> dict:
     return _cache
 
 
-@router.get("/component-templates")
+@router.get(
+    "/component-templates",
+    summary="List component templates",
+    description="Return pre-configured component templates from the built-in library, optionally filtered by type.",
+)
 async def list_component_templates(
     component_type: str | None = Query(None, description="Filter by component type (solar_pv, battery, etc.)"),
 ):
-    """Return pre-configured component templates from the built-in library."""
     templates = _load_templates()
     if component_type:
         return templates.get(component_type, [])
