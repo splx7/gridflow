@@ -302,8 +302,9 @@ def _make_system_block_diagram(components: list[dict]) -> BytesIO | None:
     fig, ax = plt.subplots(figsize=(7, 4))
     ax.set_xlim(0, 1)
     ax.set_ylim(0, 1)
-    ax.set_aspect("equal")
     ax.axis("off")
+    fig.patch.set_facecolor("#fafafa")
+    ax.set_facecolor("#fafafa")
 
     # ── Identify present component types ──
     has: dict[str, dict] = {}
@@ -334,40 +335,57 @@ def _make_system_block_diagram(components: list[dict]) -> BytesIO | None:
 
     # ── AC Bus bar (horizontal, center) ──
     bus_x0, bus_x1, bus_y = 0.28, 0.72, 0.50
+    # Shadow line beneath bus bar
+    ax.plot([bus_x0, bus_x1], [bus_y - 0.008, bus_y - 0.008],
+            color="#1e3a5f", linewidth=10, solid_capstyle="round",
+            alpha=0.15, zorder=4)
     ax.plot([bus_x0, bus_x1], [bus_y, bus_y], color="#2563eb",
-            linewidth=6, solid_capstyle="round", zorder=5)
-    ax.text((bus_x0 + bus_x1) / 2, bus_y + 0.035, "AC Bus",
+            linewidth=8, solid_capstyle="round", zorder=5)
+    # AC Bus label on white badge
+    ax.text((bus_x0 + bus_x1) / 2, bus_y + 0.045, "AC Bus",
             ha="center", va="bottom", fontsize=9, fontweight="bold",
-            color="#2563eb")
+            color="#2563eb", zorder=6,
+            bbox=dict(boxstyle="round,pad=0.25", facecolor="white",
+                      edgecolor="#2563eb", linewidth=0.8, alpha=0.95))
 
     # ── Component box drawing helper ──
-    box_w, box_h = 0.14, 0.09
+    box_w, box_h = 0.16, 0.10
     color_map = {
-        "pv": "#eab308", "wind": "#06b6d4", "battery": "#22c55e",
-        "generator": "#f97316", "grid": "#8b5cf6", "load": "#6b7280",
-        "inverter": "#3b82f6",
+        "pv": "#b45309", "wind": "#0891b2", "battery": "#16a34a",
+        "generator": "#ea580c", "grid": "#7c3aed", "load": "#4b5563",
+        "inverter": "#2563eb",
     }
 
     def _draw_box(cx: float, cy: float, label: str, key: str):
         clr = color_map.get(key, "#9ca3af")
         x0 = cx - box_w / 2
         y0 = cy - box_h / 2
+        # Drop shadow
+        shadow = FancyBboxPatch(
+            (x0 + 0.005, y0 - 0.005), box_w, box_h,
+            boxstyle="round,pad=0.012", facecolor="#1f2937",
+            edgecolor="none", alpha=0.18, zorder=5,
+        )
+        ax.add_patch(shadow)
+        # Main box
         box = FancyBboxPatch(
             (x0, y0), box_w, box_h,
-            boxstyle="round,pad=0.01", facecolor=clr, edgecolor="black",
-            linewidth=0.8, alpha=0.85, zorder=6,
+            boxstyle="round,pad=0.012", facecolor=clr, edgecolor="#1f2937",
+            linewidth=0.9, alpha=0.92, zorder=6,
         )
         ax.add_patch(box)
         ax.text(cx, cy, label, ha="center", va="center",
-                fontsize=6.5, fontweight="bold", color="white", zorder=7)
+                fontsize=7, fontweight="bold", color="white", zorder=7)
 
     def _connect(x1: float, y1: float, x2: float, y2: float,
                  bidirectional: bool = False):
-        style = "Simple,tail_width=1.5,head_width=5,head_length=4"
+        # Thin background line for cleaner look
+        ax.plot([x1, x2], [y1, y2], color="#d1d5db", linewidth=3,
+                solid_capstyle="round", zorder=3)
         arrow = FancyArrowPatch(
             (x1, y1), (x2, y2),
             arrowstyle=("<|-|>" if bidirectional else "-|>"),
-            color="#374151", linewidth=1.2, mutation_scale=8, zorder=4,
+            color="#374151", linewidth=1.8, mutation_scale=10, zorder=4,
         )
         ax.add_patch(arrow)
 
@@ -384,9 +402,9 @@ def _make_system_block_diagram(components: list[dict]) -> BytesIO | None:
     if len(gen_sources) == 1:
         positions_left = [0.50]
     elif len(gen_sources) == 2:
-        positions_left = [0.65, 0.35]
+        positions_left = [0.68, 0.32]
     else:
-        positions_left = [0.72, 0.50, 0.28]
+        positions_left = [0.75, 0.50, 0.25]
 
     for i, (key, label) in enumerate(gen_sources):
         cy = positions_left[i]
@@ -394,15 +412,15 @@ def _make_system_block_diagram(components: list[dict]) -> BytesIO | None:
         _draw_box(cx, cy, label, key)
         _connect(cx + box_w / 2, cy, bus_x0, bus_y)
 
-    # Grid (top)
+    # Grid (top — tighter spacing)
     if "grid" in has:
-        cx, cy = 0.50, 0.88
+        cx, cy = 0.50, 0.83
         _draw_box(cx, cy, has["grid"]["label"], "grid")
         _connect(cx, cy - box_h / 2, cx, bus_y + 0.025, bidirectional=True)
 
-    # Battery (bottom)
+    # Battery (bottom — tighter spacing)
     if "battery" in has:
-        cx, cy = 0.50, 0.12
+        cx, cy = 0.50, 0.17
         _draw_box(cx, cy, has["battery"]["label"], "battery")
         _connect(cx, cy + box_h / 2, cx, bus_y - 0.025, bidirectional=True)
 
@@ -428,11 +446,14 @@ def _make_sld_diagram(
 
     fig, ax = plt.subplots(figsize=(8, max(4, len(buses) * 1.2 + 1)))
     ax.axis("off")
+    fig.patch.set_facecolor("#fafafa")
+    ax.set_facecolor("#fafafa")
 
     # ── Layout: use stored positions or auto-layout vertically ──
     bus_positions: dict[str, tuple[float, float]] = {}
     bus_id_to_name: dict[str, str] = {}
     bus_voltages: dict[str, float] = {}
+    bus_types: dict[str, str] = {}
 
     has_positions = all(
         b.get("x_position") is not None and b.get("y_position") is not None
@@ -448,17 +469,19 @@ def _make_sld_diagram(
         y_range = max(y_max - y_min, 1)
         for b in buses:
             nx = 0.15 + 0.70 * (b["x_position"] - x_min) / x_range
-            ny = 0.85 - 0.70 * (b["y_position"] - y_min) / y_range
+            ny = 0.85 - 0.75 * (b["y_position"] - y_min) / y_range
             bus_positions[b["name"]] = (nx, ny)
             bus_id_to_name[b.get("id", b["name"])] = b["name"]
             bus_voltages[b["name"]] = b.get("nominal_voltage_kv", 0.4)
+            bus_types[b["name"]] = b.get("bus_type", "pq")
     else:
         for i, b in enumerate(buses):
             nx = 0.50
-            ny = 0.85 - i * (0.70 / max(len(buses) - 1, 1))
+            ny = 0.85 - i * (0.75 / max(len(buses) - 1, 1))
             bus_positions[b["name"]] = (nx, ny)
             bus_id_to_name[b.get("id", b["name"])] = b["name"]
             bus_voltages[b["name"]] = b.get("nominal_voltage_kv", 0.4)
+            bus_types[b["name"]] = b.get("bus_type", "pq")
 
     # ── Build branch flow lookup from network_data ──
     flow_lookup: dict[str, dict] = {}
@@ -472,36 +495,62 @@ def _make_sld_diagram(
                 ):
                     flow_lookup[name] = f
 
-    # ── Draw buses (thick horizontal lines) ──
-    bus_bar_half = 0.12
+    # ── Draw buses (thick horizontal lines, color-coded by voltage) ──
+    bus_bar_half = 0.14
     for name, (bx, by) in bus_positions.items():
         vkv = bus_voltages.get(name, 0.4)
-        bus_type_str = ""
-        for b in buses:
-            if b["name"] == name:
-                bt = b.get("bus_type", "pq")
-                if bt == "slack":
-                    bus_type_str = " [Slack]"
-                elif bt == "pv":
-                    bus_type_str = " [PV]"
-                break
+        bt = bus_types.get(name, "pq")
+        # Color-code by voltage level
+        bar_color = "#991b1b" if vkv >= 1.0 else "#1e40af"
 
         ax.plot(
             [bx - bus_bar_half, bx + bus_bar_half], [by, by],
-            color="#1e40af", linewidth=4, solid_capstyle="butt", zorder=5,
+            color=bar_color, linewidth=5, solid_capstyle="butt", zorder=5,
         )
+
+        # Bus name with colored dot for type (right of name)
         ax.text(
-            bx, by + 0.03, f"{name}{bus_type_str}",
+            bx, by + 0.05, name,
             ha="center", va="bottom", fontsize=7, fontweight="bold",
             color="#1e3a5f",
         )
+        # Type indicator dot
+        dot_colors = {"slack": "#dc2626", "pv": "#d97706"}
+        if bt in dot_colors:
+            # Place dot to the right of the name
+            ax.plot(
+                bx + bus_bar_half + 0.02, by + 0.06,
+                "o", color=dot_colors[bt], markersize=5, zorder=6,
+            )
+            ax.text(
+                bx + bus_bar_half + 0.04, by + 0.06,
+                bt.upper(), fontsize=5, color=dot_colors[bt],
+                va="center", ha="left", fontweight="bold",
+            )
+
+        # Voltage label with more clearance
         ax.text(
-            bx, by - 0.03, f"{vkv} kV",
+            bx, by - 0.05, f"{vkv} kV",
             ha="center", va="top", fontsize=6, color="#6b7280",
         )
 
+        # Ground symbol for slack bus
+        if bt == "slack":
+            gx = bx - bus_bar_half - 0.02
+            gy = by
+            for j, hw in enumerate([0.025, 0.017, 0.009]):
+                gy_line = gy - 0.012 * (j + 1)
+                ax.plot(
+                    [gx - hw, gx + hw], [gy_line, gy_line],
+                    color="#374151", linewidth=1.2, zorder=5,
+                )
+            ax.plot(
+                [gx, gx], [by, by - 0.012],
+                color="#374151", linewidth=1.2, zorder=5,
+            )
+
     # ── Draw branches ──
-    for br in branches:
+    for br_idx, br in enumerate(branches):
         from_name = br.get("from_bus", "")
         to_name = br.get("to_bus", "")
         if from_name not in bus_positions or to_name not in bus_positions:
@@ -516,29 +565,27 @@ def _make_sld_diagram(
         mid_y = (fy + ty) / 2
 
         if br_type == "transformer":
-            # IEC transformer symbol: two overlapping circles
-            r = 0.025
-            offset = r * 0.6
+            # IEC transformer symbol: two overlapping circles (larger)
+            r = 0.035
+            offset = r * 0.7
             ax.plot([fx, mid_x], [fy, mid_y + offset], color="#374151",
-                    linewidth=1, zorder=3)
+                    linewidth=1.2, zorder=3)
             ax.plot([mid_x, tx], [mid_y - offset, ty], color="#374151",
-                    linewidth=1, zorder=3)
+                    linewidth=1.2, zorder=3)
             circle1 = plt.Circle((mid_x, mid_y + offset), r,
                                  fill=False, edgecolor="#374151",
-                                 linewidth=1.2, zorder=4)
+                                 linewidth=1.5, zorder=4)
             circle2 = plt.Circle((mid_x, mid_y - offset), r,
                                  fill=False, edgecolor="#374151",
-                                 linewidth=1.2, zorder=4)
+                                 linewidth=1.5, zorder=4)
             ax.add_patch(circle1)
             ax.add_patch(circle2)
-            ax.text(mid_x + 0.04, mid_y, "Tx", fontsize=6,
-                    color="#374151", va="center")
         else:
-            # Cable/line: simple line
+            # Cable/line: dashed to distinguish from transformer
             ax.plot([fx, tx], [fy, ty], color="#374151",
-                    linewidth=1, zorder=3)
+                    linewidth=1.2, linestyle="--", zorder=3)
 
-        # Branch label
+        # Branch label — alternate sides to prevent overlap
         label_parts = [br_name]
         flow = flow_lookup.get(br_name)
         if flow:
@@ -547,18 +594,21 @@ def _make_sld_diagram(
             label_parts.append(f"{p_kw:.0f} kW ({loading:.0f}%)")
 
         label_text = "\n".join(label_parts)
-        # Offset label to the side to avoid overlap with line
-        label_offset_x = 0.06
+        # Even-index → right, odd-index → left
+        if br_idx % 2 == 0:
+            label_offset_x = 0.06
+            ha = "left"
+        else:
+            label_offset_x = -0.06
+            ha = "right"
         ax.text(mid_x + label_offset_x, mid_y, label_text, fontsize=5.5,
-                color="#6b7280", va="center", ha="left",
+                color="#6b7280", va="center", ha=ha,
                 bbox=dict(boxstyle="round,pad=0.15", facecolor="white",
                           edgecolor="#e5e7eb", alpha=0.9),
                 zorder=6)
 
     ax.set_xlim(0, 1)
     ax.set_ylim(0, 1)
-    ax.set_title("Single Line Diagram", fontsize=10, fontweight="bold",
-                 pad=10)
     fig.tight_layout(pad=0.5)
     return _fig_to_buf(fig)
 
