@@ -1,16 +1,18 @@
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 import jwt
 
 from app.config import settings
 from app.core.deps import get_current_user
+from app.core.rate_limit import auth_limiter
 from app.core.security import (
     create_access_token,
     create_refresh_token,
     hash_password,
+    validate_password_strength,
     verify_password,
 )
 from app.models.database import get_db
@@ -27,7 +29,13 @@ router = APIRouter()
 
 
 @router.post("/register", response_model=TokenResponse, status_code=status.HTTP_201_CREATED)
-async def register(body: RegisterRequest, db: AsyncSession = Depends(get_db)):
+async def register(body: RegisterRequest, request: Request, db: AsyncSession = Depends(get_db)):
+    auth_limiter.check(request)
+
+    pwd_error = validate_password_strength(body.password)
+    if pwd_error:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=pwd_error)
+
     result = await db.execute(select(User).where(User.email == body.email))
     if result.scalar_one_or_none():
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Email already registered")
@@ -48,7 +56,8 @@ async def register(body: RegisterRequest, db: AsyncSession = Depends(get_db)):
 
 
 @router.post("/login", response_model=TokenResponse)
-async def login(body: LoginRequest, db: AsyncSession = Depends(get_db)):
+async def login(body: LoginRequest, request: Request, db: AsyncSession = Depends(get_db)):
+    auth_limiter.check(request)
     result = await db.execute(select(User).where(User.email == body.email))
     user = result.scalar_one_or_none()
     if not user or not verify_password(body.password, user.hashed_password):

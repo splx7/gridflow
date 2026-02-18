@@ -1,13 +1,24 @@
 "use client";
 
-import { useRef, useState, useCallback } from "react";
+import { useRef, useState, useCallback, useEffect } from "react";
 import { toast } from "sonner";
 import { useProjectStore } from "@/stores/project-store";
-import { uploadWeather, uploadLoadProfile, getErrorMessage } from "@/lib/api";
+import { uploadWeather, uploadLoadProfile, getErrorMessage, getWeatherPreview, getLoadProfilePreview } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
+import {
+  BarChart,
+  Bar,
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  Tooltip as ReTooltip,
+  ResponsiveContainer,
+  CartesianGrid,
+} from "recharts";
 import {
   CloudSun,
   Upload,
@@ -94,7 +105,6 @@ const SCENARIO_PRESETS: ScenarioPreset[] = [
     icon: <Wheat className="h-4 w-4" />,
     color: "text-emerald-400",
   },
-  // Developing-country scenarios
   {
     key: "village_microgrid",
     label: "Village Microgrid",
@@ -171,6 +181,38 @@ export default function DataPanel({ projectId }: DataPanelProps) {
   const [weatherDrag, setWeatherDrag] = useState(false);
   const [loadDrag, setLoadDrag] = useState(false);
   const [generatingScenario, setGeneratingScenario] = useState<string | null>(null);
+
+  // Preview data
+  const [weatherPreview, setWeatherPreview] = useState<{
+    months: string[];
+    ghi_avg: number[];
+    temp_avg: number[];
+    annual_ghi_kwh_m2: number;
+  } | null>(null);
+  const [loadPreview, setLoadPreview] = useState<{
+    hours: number[];
+    avg_kw: number[];
+    peak_kw: number;
+    min_kw: number;
+  } | null>(null);
+
+  // Fetch weather preview when datasets change
+  useEffect(() => {
+    if (weatherDatasets.length > 0) {
+      getWeatherPreview(projectId, weatherDatasets[0].id)
+        .then(setWeatherPreview)
+        .catch(() => {});
+    }
+  }, [weatherDatasets, projectId]);
+
+  // Fetch load preview when profiles change
+  useEffect(() => {
+    if (loadProfiles.length > 0) {
+      getLoadProfilePreview(projectId, loadProfiles[0].id)
+        .then(setLoadPreview)
+        .catch(() => {});
+    }
+  }, [loadProfiles, projectId]);
 
   const handleFetchPVGIS = async () => {
     setFetchingPVGIS(true);
@@ -266,6 +308,42 @@ export default function DataPanel({ projectId }: DataPanelProps) {
               You can add additional datasets below.
             </p>
           )}
+
+          {/* Weather Preview Chart */}
+          {weatherPreview && (
+            <div className="rounded-lg border border-border p-3 bg-background/50">
+              <p className="text-xs font-medium text-muted-foreground mb-2">
+                Monthly Average GHI (W/m²)
+              </p>
+              <ResponsiveContainer width="100%" height={140}>
+                <BarChart
+                  data={weatherPreview.months.map((m, i) => ({
+                    month: m,
+                    ghi: weatherPreview.ghi_avg[i],
+                  }))}
+                  margin={{ top: 4, right: 4, bottom: 0, left: -20 }}
+                >
+                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                  <XAxis dataKey="month" tick={{ fontSize: 10 }} stroke="hsl(var(--muted-foreground))" />
+                  <YAxis tick={{ fontSize: 10 }} stroke="hsl(var(--muted-foreground))" />
+                  <ReTooltip
+                    contentStyle={{
+                      backgroundColor: "hsl(var(--card))",
+                      border: "1px solid hsl(var(--border))",
+                      borderRadius: "8px",
+                      fontSize: "12px",
+                    }}
+                    formatter={(v: number) => [`${v} W/m²`, "GHI"]}
+                  />
+                  <Bar dataKey="ghi" fill="hsl(var(--chart-1))" radius={[2, 2, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+              <p className="text-[10px] text-muted-foreground mt-1 text-right">
+                Annual: ~{weatherPreview.annual_ghi_kwh_m2.toLocaleString()} kWh/m²
+              </p>
+            </div>
+          )}
+
           <div className="flex gap-3">
             <Button onClick={handleFetchPVGIS} disabled={fetchingPVGIS}>
               {fetchingPVGIS ? (
@@ -348,6 +426,54 @@ export default function DataPanel({ projectId }: DataPanelProps) {
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-5">
+          {/* Load Preview Chart */}
+          {loadPreview && (
+            <div className="rounded-lg border border-border p-3 bg-background/50">
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-xs font-medium text-muted-foreground">
+                  Average Daily Load Shape
+                </p>
+                <p className="text-[10px] text-muted-foreground">
+                  Peak: {loadPreview.peak_kw} kW
+                </p>
+              </div>
+              <ResponsiveContainer width="100%" height={120}>
+                <LineChart
+                  data={loadPreview.hours.map((h, i) => ({
+                    hour: `${h}:00`,
+                    kw: loadPreview.avg_kw[i],
+                  }))}
+                  margin={{ top: 4, right: 4, bottom: 0, left: -20 }}
+                >
+                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                  <XAxis
+                    dataKey="hour"
+                    tick={{ fontSize: 10 }}
+                    stroke="hsl(var(--muted-foreground))"
+                    interval={5}
+                  />
+                  <YAxis tick={{ fontSize: 10 }} stroke="hsl(var(--muted-foreground))" />
+                  <ReTooltip
+                    contentStyle={{
+                      backgroundColor: "hsl(var(--card))",
+                      border: "1px solid hsl(var(--border))",
+                      borderRadius: "8px",
+                      fontSize: "12px",
+                    }}
+                    formatter={(v: number) => [`${v} kW`, "Avg Load"]}
+                  />
+                  <Line
+                    type="monotone"
+                    dataKey="kw"
+                    stroke="hsl(var(--chart-2))"
+                    strokeWidth={2}
+                    dot={false}
+                  />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+          )}
+
           {/* Scenario Presets */}
           <div>
             <h4 className="text-sm font-medium text-muted-foreground mb-3 flex items-center gap-2">

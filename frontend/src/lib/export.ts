@@ -1,4 +1,4 @@
-import type { EconomicsResult, TimeseriesResult, NetworkResultsData } from "@/types";
+import type { EconomicsResult, TimeseriesResult, NetworkResultsData, SensitivityResult } from "@/types";
 
 function downloadCSV(content: string, filename: string) {
   const blob = new Blob([content], { type: "text/csv;charset=utf-8;" });
@@ -99,4 +99,33 @@ export function exportNetworkCSV(data: NetworkResultsData, simId: string) {
   }
 
   downloadCSV(rows.join("\n"), `network_${simId.slice(0, 8)}.csv`);
+}
+
+export function exportSensitivityCSV(data: SensitivityResult, simId: string) {
+  const rows = [
+    "section,variable,parameter,value,npc,lcoe,irr,payback_years",
+  ];
+
+  // Base results
+  const b = data.base_results;
+  rows.push(`base,,base,0,${b.npc ?? ""},${b.lcoe ?? ""},${b.irr ?? ""},${b.payback_years ?? ""}`);
+
+  // Spider data
+  for (const [varName, points] of Object.entries(data.spider)) {
+    for (const pt of points) {
+      rows.push(
+        `spider,${varName},,${pt.value},${pt.npc ?? ""},${pt.lcoe ?? ""},${pt.irr ?? ""},${pt.payback_years ?? ""}`
+      );
+    }
+  }
+
+  // Tornado data
+  rows.push("", "tornado_variable,low_value,high_value,low_npc,high_npc,npc_spread,base_npc");
+  for (const [varName, t] of Object.entries(data.tornado)) {
+    rows.push(
+      `${varName},${t.low_value},${t.high_value},${t.low_npc ?? ""},${t.high_npc ?? ""},${t.npc_spread},${t.base_npc ?? ""}`
+    );
+  }
+
+  downloadCSV(rows.join("\n"), `sensitivity_${simId.slice(0, 8)}.csv`);
 }

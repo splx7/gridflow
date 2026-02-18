@@ -462,6 +462,155 @@ export interface PowerFlowResult {
   summary: PowerFlowSummary;
 }
 
+// Sensitivity analysis types
+export interface SensitivityVariable {
+  name: string;
+  param_path: string;
+  range: [number, number];
+  points: number;
+}
+
+export interface SensitivitySpiderPoint {
+  value: number;
+  npc: number | null;
+  lcoe: number | null;
+  irr: number | null;
+  payback_years: number | null;
+}
+
+export interface SensitivityTornadoEntry {
+  low_value: number;
+  high_value: number;
+  low_npc: number | null;
+  high_npc: number | null;
+  low_lcoe: number | null;
+  high_lcoe: number | null;
+  low_irr: number | null;
+  high_irr: number | null;
+  base_npc: number | null;
+  base_lcoe: number | null;
+  base_irr: number | null;
+  npc_spread: number;
+}
+
+export interface SensitivityResult {
+  spider: Record<string, SensitivitySpiderPoint[]>;
+  tornado: Record<string, SensitivityTornadoEntry>;
+  base_results: {
+    npc: number | null;
+    lcoe: number | null;
+    irr: number | null;
+    payback_years: number | null;
+  };
+}
+
+// Contingency analysis types
+export interface ContingencyViolation {
+  bus_name: string;
+  voltage_pu: number;
+  limit_pu: number;
+  violation_type: "under" | "over";
+}
+
+export interface ContingencyThermalViolation {
+  branch_name: string;
+  loading_pct: number;
+  limit_pct: number;
+}
+
+export interface ContingencyBranchResult {
+  branch_name: string;
+  branch_index: number;
+  passed: boolean;
+  converged: boolean;
+  islanding: boolean;
+  voltage_violations: ContingencyViolation[];
+  thermal_violations: ContingencyThermalViolation[];
+  worst_voltage_pu: number | null;
+  worst_loading_pct: number | null;
+}
+
+export interface ContingencyAnalysisResult {
+  n1_secure: boolean;
+  total_contingencies: number;
+  passed_count: number;
+  failed_count: number;
+  islanding_count: number;
+  worst_voltage_pu: number | null;
+  worst_loading_pct: number | null;
+  grid_code: string;
+  results: ContingencyBranchResult[];
+}
+
+// BESS Sizing Recommendation
+export interface BESSRecommendation {
+  recommended_capacity_kwh: number;
+  recommended_max_power_kw: number;
+  recommended_charge_rate_kw: number;
+  recommended_discharge_rate_kw: number;
+  projected_unmet_fraction: number;
+  projected_re_fraction: number;
+  projected_shifted_kwh: number;
+  analysis: {
+    total_surplus_kwh: number;
+    total_deficit_kwh: number;
+    peak_surplus_kw: number;
+    peak_deficit_kw: number;
+    avg_daily_surplus_kwh: number;
+    avg_daily_deficit_kwh: number;
+    current_unmet_fraction: number;
+    current_re_fraction: number;
+  };
+  notes: string[];
+}
+
+// Grid code profile summary
+export interface GridCodeSummary {
+  key: string;
+  name: string;
+  description: string;
+  voltage_normal: [number, number];
+  voltage_contingency: [number, number];
+  thermal_limit_pct: number;
+  frequency_hz: number;
+}
+
+// Project & Component Template types
+export interface ProjectTemplateSummary {
+  id: string;
+  name: string;
+  description: string;
+  category: string;
+  component_count: number;
+  location: { latitude: number; longitude: number };
+}
+
+export interface ProjectTemplate {
+  id: string;
+  name: string;
+  description: string;
+  category: string;
+  project: {
+    latitude: number;
+    longitude: number;
+    lifetime_years: number;
+    discount_rate: number;
+  };
+  components: {
+    component_type: string;
+    name: string;
+    config: Record<string, unknown>;
+  }[];
+  load: { scenario: string; annual_kwh: number };
+}
+
+export interface ComponentTemplate {
+  id: string;
+  name: string;
+  description: string;
+  config: Record<string, unknown>;
+}
+
 // Network simulation results (from completed simulation)
 export interface NetworkResultsData {
   power_flow_summary: {

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useRef } from "react";
 import {
   LineChart,
   Line,
@@ -17,6 +17,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Slider } from "@/components/ui/slider";
 import type { TimeseriesResult } from "@/types";
+import { ChartExportButton } from "./chart-export-button";
 
 interface TimeseriesChartProps {
   data: TimeseriesResult;
@@ -25,6 +26,8 @@ interface TimeseriesChartProps {
 type ViewRange = "year" | "month" | "week" | "day";
 
 export default function TimeseriesChart({ data }: TimeseriesChartProps) {
+  const powerChartRef = useRef<HTMLDivElement>(null);
+  const socChartRef = useRef<HTMLDivElement>(null);
   const [viewRange, setViewRange] = useState<ViewRange>("week");
   const [startHour, setStartHour] = useState(0);
 
@@ -64,8 +67,8 @@ export default function TimeseriesChart({ data }: TimeseriesChartProps) {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center gap-4">
-        <div className="flex gap-1">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 sm:gap-4">
+        <div className="flex gap-1 shrink-0">
           {(["day", "week", "month", "year"] as ViewRange[]).map((range) => (
             <Button
               key={range}
@@ -79,7 +82,7 @@ export default function TimeseriesChart({ data }: TimeseriesChartProps) {
         </div>
 
         {viewRange !== "year" && (
-          <div className="flex-1">
+          <div className="flex-1 w-full">
             <Slider
               min={0}
               max={8760 - hours}
@@ -92,10 +95,11 @@ export default function TimeseriesChart({ data }: TimeseriesChartProps) {
       </div>
 
       <Card variant="glass">
-        <CardHeader className="pb-2">
+        <CardHeader className="pb-2 flex flex-row items-center justify-between">
           <CardTitle className="text-sm">Power Output (kW)</CardTitle>
+          <ChartExportButton chartRef={powerChartRef} filename="power-output" />
         </CardHeader>
-        <CardContent>
+        <CardContent ref={powerChartRef}>
           <ResponsiveContainer width="100%" height={450}>
             <LineChart data={chartData}>
               <CartesianGrid strokeDasharray="3 3" stroke="hsl(217.2 32.6% 17.5%)" />
@@ -185,10 +189,11 @@ export default function TimeseriesChart({ data }: TimeseriesChartProps) {
       {/* Battery SOC */}
       {socData && (
         <Card variant="glass">
-          <CardHeader className="pb-2">
+          <CardHeader className="pb-2 flex flex-row items-center justify-between">
             <CardTitle className="text-sm">Battery State of Charge</CardTitle>
+            <ChartExportButton chartRef={socChartRef} filename="battery-soc" />
           </CardHeader>
-          <CardContent>
+          <CardContent ref={socChartRef}>
             <ResponsiveContainer width="100%" height={200}>
               <AreaChart data={socData}>
                 <CartesianGrid strokeDasharray="3 3" stroke="hsl(217.2 32.6% 17.5%)" />

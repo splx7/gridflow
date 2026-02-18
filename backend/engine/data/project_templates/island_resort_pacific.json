@@ -1,0 +1,69 @@
+{
+  "id": "island_resort_pacific",
+  "name": "Island Resort (Pacific Islands)",
+  "description": "100% renewable target for a Pacific Island resort with solar, battery, and wind.",
+  "category": "off-grid",
+  "preview_image": null,
+  "project": {
+    "latitude": -17.7765,
+    "longitude": 177.9642,
+    "lifetime_years": 25,
+    "discount_rate": 0.08
+  },
+  "components": [
+    {
+      "component_type": "solar_pv",
+      "name": "Resort Solar",
+      "config": {
+        "capacity_kw": 200,
+        "tilt_deg": 12,
+        "azimuth_deg": 0,
+        "module_type": "monocrystalline",
+        "inverter_efficiency": 0.97,
+        "system_losses": 0.14,
+        "capital_cost_per_kw": 750,
+        "om_cost_per_kw_year": 15,
+        "lifetime_years": 25,
+        "derating_factor": 0.005
+      }
+    },
+    {
+      "component_type": "battery",
+      "name": "Main Battery Storage",
+      "config": {
+        "capacity_kwh": 800,
+        "max_charge_rate_kw": 200,
+        "max_discharge_rate_kw": 200,
+        "round_trip_efficiency": 0.94,
+        "min_soc": 0.10,
+        "max_soc": 0.95,
+        "initial_soc": 0.50,
+        "chemistry": "LFP",
+        "cycle_life": 6000,
+        "capital_cost_per_kwh": 230,
+        "replacement_cost_per_kwh": 170,
+        "om_cost_per_kwh_year": 2,
+        "lifetime_years": 15
+      }
+    },
+    {
+      "component_type": "diesel_generator",
+      "name": "Emergency Backup",
+      "config": {
+        "rated_power_kw": 150,
+        "min_load_ratio": 0.30,
+        "fuel_curve_a0": 0.246,
+        "fuel_curve_a1": 0.08145,
+        "fuel_price_per_liter": 2.00,
+        "capital_cost_per_kw": 500,
+        "om_cost_per_hour": 8,
+        "lifetime_hours": 30000,
+        "start_cost": 5
+      }
+    }
+  ],
+  "load": {
+    "scenario": "commercial",
+    "annual_kwh": 500000
+  }
+}

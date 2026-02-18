@@ -698,8 +698,6 @@ class SimulationRunner:
         # ==============================================================
         self._report("Running energy dispatch", 0.50)
 
-        dispatch_fn = _DISPATCH_STRATEGIES[self.dispatch_strategy]
-
         # Pre-allocate time-series output arrays.
         ts_battery_charge = np.zeros(n, dtype=np.float64)
         ts_battery_discharge = np.zeros(n, dtype=np.float64)
@@ -711,52 +709,135 @@ class SimulationRunner:
         ts_unmet = np.zeros(n, dtype=np.float64)
         ts_curtailed = np.zeros(n, dtype=np.float64)
 
-        gen_running = False
         total_grid_import_cost = 0.0
         total_grid_export_revenue = 0.0
         total_generator_cost = 0.0
 
-        # Report progress every ~10 % through the dispatch loop.
-        progress_interval = n // 10
+        if self.dispatch_strategy == "optimal":
+            # ----- LP optimal dispatch: solve entire year at once -----
+            from engine.dispatch.optimal import dispatch_optimal as lp_dispatch
 
-        for h in range(n):
-            month = _hour_to_month(h)
-            net_load = self.load_kw[h] - re_output[h]
+            lp_battery_cfg = None
+            if "battery" in self.components:
+                bc = self.components["battery"]
+                lp_battery_cfg = {
+                    "capacity_kwh": bc.get("capacity_kwh", 100),
+                    "max_charge_kw": bc.get("max_charge_rate_kw", bc.get("max_charge_kw", 50)),
+                    "max_discharge_kw": bc.get("max_discharge_rate_kw", bc.get("max_discharge_kw", 50)),
+                    "efficiency": bc.get("round_trip_efficiency", bc.get("efficiency", 0.90)),
+                    "min_soc": bc.get("min_soc", 0.10),
+                    "max_soc": bc.get("max_soc", 0.95),
+                    "initial_soc": bc.get("initial_soc", 0.50),
+                }
 
-            step_result = dispatch_fn(
-                net_load=net_load,
-                battery=battery,
-                generator=generator,
-                grid=grid,
-                hour=h,
-                month=month,
-                gen_running=gen_running,
+            lp_gen_cfg = None
+            if "diesel_generator" in self.components:
+                gc = self.components["diesel_generator"]
+                fc = gc.get("fuel_curve", {})
+                lp_gen_cfg = {
+                    "rated_power_kw": gc.get("rated_power_kw", 100),
+                    "min_load_ratio": gc.get("min_load_ratio", 0.30),
+                    "fuel_curve_a0": fc.get("a0", gc.get("fuel_curve_a0", 0.0845)),
+                    "fuel_curve_a1": fc.get("a1", gc.get("fuel_curve_a1", 0.246)),
+                    "fuel_price": gc.get("fuel_price", gc.get("fuel_price_per_liter", 1.20)),
+                    "om_cost_per_hour": gc.get("om_cost_per_hour", 5.0),
+                }
+
+            lp_grid_cfg = None
+            if grid is not None:
+                lp_grid_cfg = {
+                    "max_import_kw": grid.max_import_kw,
+                    "max_export_kw": grid.max_export_kw,
+                    "tariff": grid.tariff,
+                    "sell_back_enabled": grid.sell_back_enabled,
+                }
+
+            self._report("Running LP optimal dispatch (HiGHS)", 0.55)
+            lp_result = lp_dispatch(
+                load_kw=self.load_kw,
+                re_output_kw=re_output,
+                battery_config=lp_battery_cfg,
+                generator_config=lp_gen_cfg,
+                grid_config=lp_grid_cfg,
             )
+            self._report("LP dispatch complete", 0.90)
 
-            ts_battery_charge[h] = step_result["battery_charge_kw"]
-            ts_battery_discharge[h] = step_result["battery_discharge_kw"]
-            ts_generator_kw[h] = step_result["generator_kw"]
-            ts_generator_fuel_l[h] = step_result["generator_fuel_l"]
-            ts_grid_import[h] = step_result["grid_import_kw"]
-            ts_grid_export[h] = step_result["grid_export_kw"]
-            ts_unmet[h] = step_result["unmet_kw"]
-            ts_curtailed[h] = step_result["curtailed_kw"]
+            # Map LP results to runner output arrays.
+            ts_battery_charge = lp_result["battery_charge"]
+            ts_battery_discharge = lp_result["battery_discharge"]
+            ts_battery_soc = lp_result["battery_soc"]
+            ts_generator_kw = lp_result["generator_output"]
+            ts_grid_import = lp_result["grid_import"]
+            ts_grid_export = lp_result["grid_export"]
+            ts_unmet = lp_result["unmet"]
+            ts_curtailed = lp_result["excess"]
 
-            total_grid_import_cost += step_result["grid_import_cost"]
-            total_grid_export_revenue += step_result["grid_export_revenue"]
-            total_generator_cost += step_result["generator_cost"]
+            # Recompute fuel consumption from generator output.
+            if generator is not None:
+                for h in range(n):
+                    if ts_generator_kw[h] > 0:
+                        ts_generator_fuel_l[h] = (
+                            generator.fuel_curve.a0 * generator.rated_power_kw
+                            + generator.fuel_curve.a1 * ts_generator_kw[h]
+                        )
 
-            gen_running = step_result["gen_running"]
+            # Recompute grid costs from tariff.
+            if grid is not None:
+                for h in range(n):
+                    month = _hour_to_month(h)
+                    hod = _hour_of_day(h)
+                    total_grid_import_cost += ts_grid_import[h] * grid.tariff.buy_price(hod, month)
+                    total_grid_export_revenue += ts_grid_export[h] * grid.tariff.sell_price(hod, month)
 
-            # Track battery SOC.
-            if battery is not None:
-                state = battery.get_state()
-                ts_battery_soc[h] = state["soc"]
+            if generator is not None:
+                total_generator_cost = float(np.sum(ts_generator_fuel_l)) * generator.fuel_price
 
-            # Periodic progress update.
-            if progress_interval > 0 and h % progress_interval == 0 and h > 0:
-                frac = 0.50 + 0.40 * (h / n)
-                self._report("Dispatching", frac)
+        else:
+            # ----- Hourly heuristic dispatch -----
+            dispatch_fn = _DISPATCH_STRATEGIES[self.dispatch_strategy]
+            gen_running = False
+
+            # Report progress every ~10 % through the dispatch loop.
+            progress_interval = n // 10
+
+            for h in range(n):
+                month = _hour_to_month(h)
+                net_load = self.load_kw[h] - re_output[h]
+
+                step_result = dispatch_fn(
+                    net_load=net_load,
+                    battery=battery,
+                    generator=generator,
+                    grid=grid,
+                    hour=h,
+                    month=month,
+                    gen_running=gen_running,
+                )
+
+                ts_battery_charge[h] = step_result["battery_charge_kw"]
+                ts_battery_discharge[h] = step_result["battery_discharge_kw"]
+                ts_generator_kw[h] = step_result["generator_kw"]
+                ts_generator_fuel_l[h] = step_result["generator_fuel_l"]
+                ts_grid_import[h] = step_result["grid_import_kw"]
+                ts_grid_export[h] = step_result["grid_export_kw"]
+                ts_unmet[h] = step_result["unmet_kw"]
+                ts_curtailed[h] = step_result["curtailed_kw"]
+
+                total_grid_import_cost += step_result["grid_import_cost"]
+                total_grid_export_revenue += step_result["grid_export_revenue"]
+                total_generator_cost += step_result["generator_cost"]
+
+                gen_running = step_result["gen_running"]
+
+                # Track battery SOC.
+                if battery is not None:
+                    state = battery.get_state()
+                    ts_battery_soc[h] = state["soc"]
+
+                # Periodic progress update.
+                if progress_interval > 0 and h % progress_interval == 0 and h > 0:
+                    frac = 0.50 + 0.40 * (h / n)
+                    self._report("Dispatching", frac)
 
         # ==============================================================
         # Step 9: Compute summary metrics

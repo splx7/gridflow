@@ -2,14 +2,16 @@ import uuid
 import zlib
 
 import numpy as np
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.core.deps import get_current_user
 from app.models.database import get_db
 from app.models.load_profile import LoadProfile
 from app.models.project import Project
+from app.models.simulation import Simulation, SimulationResult
 from app.models.user import User
 from app.schemas.advisor import (
     AdvisorRequest,
@@ -17,6 +19,7 @@ from app.schemas.advisor import (
     SystemEvaluateRequest,
     SystemHealthResponse,
 )
+from app.schemas.bess_sizing import BESSRecommendationResponse
 
 from engine.advisor.sizing import (
     GoalWeights,
@@ -203,3 +206,76 @@ async def evaluate_system_health(
             for w in result.warnings
         ],
     )
+
+
+@router.get(
+    "/{project_id}/advisor/bess-recommendation",
+    response_model=BESSRecommendationResponse,
+)
+async def get_bess_recommendation(
+    project_id: uuid.UUID,
+    simulation_id: uuid.UUID = Query(..., description="Simulation ID to analyze"),
+    max_unmet_fraction: float = Query(0.05, ge=0.0, le=1.0, description="Max unmet load fraction target"),
+    min_re_fraction: float = Query(0.80, ge=0.0, le=1.0, description="Min renewable fraction target"),
+    max_capacity_kwh: float | None = Query(None, gt=0, description="Upper limit for battery capacity"),
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Recommend BESS sizing based on completed simulation results.
+
+    Analyzes the hourly surplus/deficit from an existing simulation to
+    determine optimal battery capacity and power rating that meets the
+    specified unmet load and renewable fraction targets.
+    """
+    await _get_user_project(project_id, user, db)
+
+    # Load simulation with results
+    sim_result = await db.execute(
+        select(Simulation)
+        .where(
+            Simulation.id == simulation_id,
+            Simulation.project_id == project_id,
+        )
+        .options(selectinload(Simulation.results))
+    )
+    simulation = sim_result.scalar_one_or_none()
+    if not simulation:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Simulation not found",
+        )
+    if simulation.status != "completed" or simulation.results is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Simulation must be completed with results to generate BESS recommendation",
+        )
+
+    sr = simulation.results
+
+    # Decompress time-series data
+    def _decompress_ts(data: bytes | None) -> np.ndarray:
+        if data is None:
+            return np.zeros(8760, dtype=np.float64)
+        return np.frombuffer(zlib.decompress(data), dtype=np.float64)
+
+    load_kw = _decompress_ts(sr.ts_load)
+    pv_kw = _decompress_ts(sr.ts_pv_output)
+    wind_kw = _decompress_ts(sr.ts_wind_output)
+    gen_kw = _decompress_ts(sr.ts_generator_output)
+    grid_import_kw = _decompress_ts(sr.ts_grid_import)
+
+    re_output_kw = pv_kw + wind_kw
+
+    from engine.advisor.bess_sizing import recommend_bess
+
+    bess_result = recommend_bess(
+        load_kw=load_kw,
+        re_output_kw=re_output_kw,
+        generator_kw=gen_kw,
+        grid_import_kw=grid_import_kw,
+        max_unmet_fraction=max_unmet_fraction,
+        min_re_fraction=min_re_fraction,
+        max_capacity_kwh=max_capacity_kwh,
+    )
+
+    return BESSRecommendationResponse(**bess_result.to_dict())

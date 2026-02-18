@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useRef } from "react";
 import {
   BarChart,
   Bar,
@@ -15,6 +15,7 @@ import {
 } from "recharts";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import type { EconomicsResult, TimeseriesResult } from "@/types";
+import { ChartExportButton } from "./chart-export-button";
 
 interface EnergyBreakdownProps {
   timeseries: TimeseriesResult;
@@ -24,6 +25,7 @@ interface EnergyBreakdownProps {
 export default function EnergyBreakdown({
   timeseries,
 }: EnergyBreakdownProps) {
+  const monthlyChartRef = useRef<HTMLDivElement>(null);
   const summary = useMemo(() => {
     const sum = (arr: number[] | null) =>
       arr ? arr.reduce((a, b) => a + b, 0) : 0;
@@ -119,10 +121,11 @@ export default function EnergyBreakdown({
 
       {/* Monthly Stacked Bar */}
       <Card variant="glass">
-        <CardHeader>
+        <CardHeader className="flex flex-row items-center justify-between">
           <CardTitle>Monthly Energy Production</CardTitle>
+          <ChartExportButton chartRef={monthlyChartRef} filename="monthly-energy" />
         </CardHeader>
-        <CardContent>
+        <CardContent ref={monthlyChartRef}>
           <ResponsiveContainer width="100%" height={400}>
             <ComposedChart data={monthlyData}>
               <CartesianGrid strokeDasharray="3 3" stroke="hsl(217.2 32.6% 17.5%)" />

@@ -76,4 +76,7 @@ class SimulationResult(Base):
     power_flow_summary: Mapped[dict | None] = mapped_column(JSONB)
     ts_bus_voltages: Mapped[dict | None] = mapped_column(JSONB)
 
+    # Sensitivity analysis results
+    sensitivity_results: Mapped[dict | None] = mapped_column(JSONB)
+
     simulation: Mapped["Simulation"] = relationship(back_populates="results")

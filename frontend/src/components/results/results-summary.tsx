@@ -73,8 +73,8 @@ export default function ResultsSummary({
     : 0;
 
   return (
-    <div className="border-b border-border bg-background/30 backdrop-blur px-6 py-4">
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+    <div className="border-b border-border bg-background/30 backdrop-blur px-4 sm:px-6 py-4">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2 sm:gap-3">
         <MetricCard
           label="LCOE"
           value={`$${economics.lcoe.toFixed(3)}/kWh`}

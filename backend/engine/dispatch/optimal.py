@@ -444,7 +444,7 @@ def dispatch_optimal(
     h.changeObjectiveSense(highspy.ObjSense.kMinimize)
     for j in range(n_vars):
         if col_cost[j] != 0.0:
-            h.changeObjectiveCost(j, float(col_cost[j]))
+            h.changeColCost(j, float(col_cost[j]))
 
     # Add constraints row by row.  While this is not the fastest method,
     # it avoids building a full CSC matrix in Python and is adequate for

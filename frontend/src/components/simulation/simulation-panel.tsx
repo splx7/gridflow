@@ -27,8 +27,10 @@ import {
   XCircle,
   Lightbulb,
   Upload,
+  RotateCcw,
+  Clock,
 } from "lucide-react";
-import type { DispatchStrategy } from "@/types";
+import type { DispatchStrategy, Simulation } from "@/types";
 
 interface SimulationPanelProps {
   projectId: string;
@@ -56,6 +58,30 @@ const DISPATCH_INFO: Record<
     desc: "Linear programming for optimal dispatch. Most accurate but slower.",
   },
 };
+
+function ElapsedTime({ since }: { since: string }) {
+  const [elapsed, setElapsed] = useState("");
+
+  useEffect(() => {
+    const start = new Date(since).getTime();
+    const tick = () => {
+      const diff = Math.floor((Date.now() - start) / 1000);
+      const mins = Math.floor(diff / 60);
+      const secs = diff % 60;
+      setElapsed(mins > 0 ? `${mins}m ${secs}s` : `${secs}s`);
+    };
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, [since]);
+
+  return (
+    <span className="flex items-center gap-1 text-xs text-muted-foreground">
+      <Clock className="h-3 w-3" />
+      {elapsed}
+    </span>
+  );
+}
 
 export default function SimulationPanel({
   projectId,
@@ -163,6 +189,23 @@ export default function SimulationPanel({
       toast.error(getErrorMessage(err));
     } finally {
       setGenerating(false);
+    }
+  };
+
+  const handleRetry = async (sim: Simulation) => {
+    setRunning(true);
+    try {
+      await createSimulation(projectId, {
+        name: `${sim.name} (retry)`,
+        dispatch_strategy: sim.dispatch_strategy,
+        weather_dataset_id: weatherId || weatherDatasets[0]?.id || "",
+        load_profile_id: loadId || loadProfiles[0]?.id || "",
+      });
+      toast.success("Simulation restarted");
+    } catch (err) {
+      toast.error(getErrorMessage(err));
+    } finally {
+      setRunning(false);
     }
   };
 
@@ -475,13 +518,29 @@ export default function SimulationPanel({
                             View Results
                           </Button>
                         )}
-                        {sim.status === "failed" && sim.error_message && (
-                          <span
-                            className="text-xs text-destructive max-w-[200px] truncate"
-                            title={sim.error_message}
-                          >
-                            {sim.error_message}
-                          </span>
+                        {sim.status === "failed" && (
+                          <>
+                            {sim.error_message && (
+                              <span
+                                className="text-xs text-destructive max-w-[200px] truncate"
+                                title={sim.error_message}
+                              >
+                                {sim.error_message}
+                              </span>
+                            )}
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => handleRetry(sim)}
+                              disabled={running}
+                            >
+                              <RotateCcw className="h-3 w-3 mr-1" />
+                              Retry
+                            </Button>
+                          </>
+                        )}
+                        {(sim.status === "pending" || sim.status === "running") && (
+                          <ElapsedTime since={sim.created_at} />
                         )}
                         {statusBadge(sim.status)}
                         <Button

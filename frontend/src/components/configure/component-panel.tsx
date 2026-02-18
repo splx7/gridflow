@@ -120,87 +120,98 @@ const COMPONENT_ICONS: Record<ComponentType, React.ReactNode> = {
   grid_connection: <Plug className="h-4 w-4 text-violet-400" />,
 };
 
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import { Info } from "lucide-react";
+
 interface FieldMeta {
   label: string;
   unit?: string;
   type: "number" | "boolean" | "select";
   options?: string[];
   step?: number;
+  min?: number;
+  max?: number;
+  tip?: string;
 }
 
 const FIELD_META: Record<string, Record<string, FieldMeta>> = {
   solar_pv: {
-    capacity_kwp: { label: "DC Capacity", unit: "kWp", type: "number" },
-    tilt_deg: { label: "Tilt", unit: "°", type: "number" },
-    azimuth_deg: { label: "Azimuth", unit: "°", type: "number" },
-    module_type: { label: "Module Type", type: "select", options: ["mono-si", "poly-si", "thin-film", "cis"] },
-    inverter_capacity_kw: { label: "Inverter Capacity", unit: "kW AC", type: "number" },
-    inverter_efficiency: { label: "Inverter Efficiency", type: "number", step: 0.01 },
-    inverter_cost_per_kw: { label: "Inverter Cost", unit: "$/kW", type: "number" },
-    system_losses: { label: "System Losses", type: "number", step: 0.01 },
-    capital_cost_per_kw: { label: "Panel + BOS Cost", unit: "$/kW", type: "number" },
-    om_cost_per_kw_year: { label: "O&M Cost", unit: "$/kW/yr", type: "number" },
-    lifetime_years: { label: "Lifetime", unit: "years", type: "number" },
-    derating_factor: { label: "Derating Factor", unit: "%/yr", type: "number", step: 0.001 },
+    capacity_kwp: { label: "DC Capacity", unit: "kWp", type: "number", min: 0.1, max: 100000, tip: "Total DC nameplate capacity. Typical residential: 3-10 kWp, commercial: 50-500 kWp" },
+    tilt_deg: { label: "Tilt", unit: "°", type: "number", min: 0, max: 90, tip: "Panel tilt angle from horizontal. Rule of thumb: equal to site latitude" },
+    azimuth_deg: { label: "Azimuth", unit: "°", type: "number", min: 0, max: 360, tip: "Panel facing direction. 180°=South (N hemisphere), 0°=North (S hemisphere)" },
+    module_type: { label: "Module Type", type: "select", options: ["mono-si", "poly-si", "thin-film", "cis"], tip: "Mono-Si: highest efficiency (~20-22%). Poly-Si: lower cost (~17-19%)" },
+    inverter_capacity_kw: { label: "Inverter Capacity", unit: "kW AC", type: "number", min: 0.1, max: 100000, tip: "AC output capacity. DC/AC ratio of 1.1-1.3 is typical" },
+    inverter_efficiency: { label: "Inverter Efficiency", type: "number", step: 0.01, min: 0.8, max: 1.0, tip: "Peak conversion efficiency. Modern inverters: 0.96-0.99" },
+    inverter_cost_per_kw: { label: "Inverter Cost", unit: "$/kW", type: "number", min: 0, max: 1000, tip: "Typical range: $50-200/kW for string inverters" },
+    system_losses: { label: "System Losses", type: "number", step: 0.01, min: 0, max: 0.5, tip: "Soiling, mismatch, wiring, shading. Typical: 10-14%" },
+    capital_cost_per_kw: { label: "Panel + BOS Cost", unit: "$/kW", type: "number", min: 0, max: 5000, tip: "Panels + racking + wiring. Typical: $600-1200/kW" },
+    om_cost_per_kw_year: { label: "O&M Cost", unit: "$/kW/yr", type: "number", min: 0, max: 100, tip: "Annual maintenance. Typical: $10-20/kW/yr" },
+    lifetime_years: { label: "Lifetime", unit: "years", type: "number", min: 1, max: 40, tip: "Expected lifetime. Industry standard: 25-30 years" },
+    derating_factor: { label: "Derating Factor", unit: "%/yr", type: "number", step: 0.001, min: 0, max: 0.02, tip: "Annual degradation rate. Typical: 0.4-0.7%/yr" },
   },
   wind_turbine: {
-    rated_power_kw: { label: "Rated Power", unit: "kW", type: "number" },
-    hub_height_m: { label: "Hub Height", unit: "m", type: "number" },
-    rotor_diameter_m: { label: "Rotor Diameter", unit: "m", type: "number" },
-    cut_in_speed: { label: "Cut-in Speed", unit: "m/s", type: "number", step: 0.1 },
-    cut_out_speed: { label: "Cut-out Speed", unit: "m/s", type: "number", step: 0.1 },
-    rated_speed: { label: "Rated Speed", unit: "m/s", type: "number", step: 0.1 },
-    quantity: { label: "Quantity", type: "number" },
-    capital_cost_per_kw: { label: "Capital Cost", unit: "$/kW", type: "number" },
-    om_cost_per_kw_year: { label: "O&M Cost", unit: "$/kW/yr", type: "number" },
-    lifetime_years: { label: "Lifetime", unit: "years", type: "number" },
+    rated_power_kw: { label: "Rated Power", unit: "kW", type: "number", min: 0.1, max: 10000, tip: "Nameplate power at rated wind speed" },
+    hub_height_m: { label: "Hub Height", unit: "m", type: "number", min: 10, max: 200, tip: "Height of turbine hub. Higher = more wind but higher cost" },
+    rotor_diameter_m: { label: "Rotor Diameter", unit: "m", type: "number", min: 1, max: 200, tip: "Swept area determines energy capture. Larger = more energy" },
+    cut_in_speed: { label: "Cut-in Speed", unit: "m/s", type: "number", step: 0.1, min: 1, max: 10, tip: "Minimum wind speed to start generating. Typical: 2.5-4 m/s" },
+    cut_out_speed: { label: "Cut-out Speed", unit: "m/s", type: "number", step: 0.1, min: 15, max: 40, tip: "Turbine shuts down above this. Typical: 25 m/s" },
+    rated_speed: { label: "Rated Speed", unit: "m/s", type: "number", step: 0.1, min: 8, max: 20, tip: "Wind speed at which rated power is reached. Typical: 11-14 m/s" },
+    quantity: { label: "Quantity", type: "number", min: 1, max: 100, tip: "Number of identical turbines" },
+    capital_cost_per_kw: { label: "Capital Cost", unit: "$/kW", type: "number", min: 0, max: 5000, tip: "Turbine + tower + foundation. Typical: $1200-2000/kW" },
+    om_cost_per_kw_year: { label: "O&M Cost", unit: "$/kW/yr", type: "number", min: 0, max: 200, tip: "Annual maintenance. Typical: $20-40/kW/yr" },
+    lifetime_years: { label: "Lifetime", unit: "years", type: "number", min: 1, max: 30, tip: "Expected lifetime. Typical: 20-25 years" },
   },
   battery: {
-    capacity_kwh: { label: "Capacity", unit: "kWh", type: "number" },
-    max_charge_rate_kw: { label: "Max Charge Rate", unit: "kW", type: "number" },
-    max_discharge_rate_kw: { label: "Max Discharge Rate", unit: "kW", type: "number" },
-    round_trip_efficiency: { label: "Round-trip Efficiency", type: "number", step: 0.01 },
-    inverter_capacity_kw: { label: "Inverter Capacity", unit: "kW", type: "number" },
-    inverter_cost_per_kw: { label: "Inverter Cost", unit: "$/kW", type: "number" },
-    min_soc: { label: "Min SoC", type: "number", step: 0.01 },
-    max_soc: { label: "Max SoC", type: "number", step: 0.01 },
-    initial_soc: { label: "Initial SoC", type: "number", step: 0.01 },
-    chemistry: { label: "Chemistry", type: "select", options: ["nmc", "lfp", "lto", "lead_acid"] },
-    cycle_life: { label: "Cycle Life", unit: "cycles", type: "number" },
-    capital_cost_per_kwh: { label: "Capital Cost", unit: "$/kWh", type: "number" },
-    replacement_cost_per_kwh: { label: "Replacement Cost", unit: "$/kWh", type: "number" },
-    om_cost_per_kwh_year: { label: "O&M Cost", unit: "$/kWh/yr", type: "number" },
-    lifetime_years: { label: "Lifetime", unit: "years", type: "number" },
+    capacity_kwh: { label: "Capacity", unit: "kWh", type: "number", min: 1, max: 100000, tip: "Total energy storage. Determines backup duration" },
+    max_charge_rate_kw: { label: "Max Charge Rate", unit: "kW", type: "number", min: 0.1, max: 100000, tip: "Maximum charging power. Usually 0.5-1C rate" },
+    max_discharge_rate_kw: { label: "Max Discharge Rate", unit: "kW", type: "number", min: 0.1, max: 100000, tip: "Maximum discharging power. Usually 0.5-1C rate" },
+    round_trip_efficiency: { label: "Round-trip Efficiency", type: "number", step: 0.01, min: 0.5, max: 1.0, tip: "Energy out / energy in. Li-ion: 0.85-0.95, Lead-acid: 0.75-0.85" },
+    inverter_capacity_kw: { label: "Inverter Capacity", unit: "kW", type: "number", min: 0.1, max: 100000 },
+    inverter_cost_per_kw: { label: "Inverter Cost", unit: "$/kW", type: "number", min: 0, max: 1000 },
+    min_soc: { label: "Min SoC", type: "number", step: 0.01, min: 0, max: 0.5, tip: "Minimum state of charge. Protects battery longevity. Typical: 0.1-0.2" },
+    max_soc: { label: "Max SoC", type: "number", step: 0.01, min: 0.5, max: 1.0, tip: "Maximum state of charge. Typical: 0.9-1.0" },
+    initial_soc: { label: "Initial SoC", type: "number", step: 0.01, min: 0, max: 1.0, tip: "Starting state of charge for simulation" },
+    chemistry: { label: "Chemistry", type: "select", options: ["nmc", "lfp", "lto", "lead_acid"], tip: "NMC: high energy density. LFP: longer cycle life. LTO: fast charge" },
+    cycle_life: { label: "Cycle Life", unit: "cycles", type: "number", min: 100, max: 20000, tip: "Cycles to 80% capacity. LFP: 3000-6000, NMC: 1000-3000" },
+    capital_cost_per_kwh: { label: "Capital Cost", unit: "$/kWh", type: "number", min: 0, max: 2000, tip: "Battery pack cost. Li-ion: $150-400/kWh" },
+    replacement_cost_per_kwh: { label: "Replacement Cost", unit: "$/kWh", type: "number", min: 0, max: 2000, tip: "Cost for battery replacement when cycle life exhausted" },
+    om_cost_per_kwh_year: { label: "O&M Cost", unit: "$/kWh/yr", type: "number", min: 0, max: 50 },
+    lifetime_years: { label: "Lifetime", unit: "years", type: "number", min: 1, max: 25, tip: "Calendar lifetime. Typical: 10-15 years" },
   },
   diesel_generator: {
-    rated_power_kw: { label: "Rated Power", unit: "kW", type: "number" },
-    min_load_ratio: { label: "Min Load Ratio", type: "number", step: 0.01 },
-    fuel_curve_a0: { label: "Fuel Curve a₀", type: "number", step: 0.001 },
-    fuel_curve_a1: { label: "Fuel Curve a₁", type: "number", step: 0.001 },
-    fuel_price_per_liter: { label: "Fuel Price", unit: "$/L", type: "number", step: 0.01 },
-    capital_cost_per_kw: { label: "Capital Cost", unit: "$/kW", type: "number" },
-    om_cost_per_hour: { label: "O&M Cost", unit: "$/hr", type: "number", step: 0.1 },
-    lifetime_hours: { label: "Lifetime", unit: "hours", type: "number" },
-    start_cost: { label: "Start Cost", unit: "$", type: "number" },
+    rated_power_kw: { label: "Rated Power", unit: "kW", type: "number", min: 1, max: 50000, tip: "Generator nameplate capacity" },
+    min_load_ratio: { label: "Min Load Ratio", type: "number", step: 0.01, min: 0, max: 0.5, tip: "Minimum operating load as fraction of rated. Typical: 0.25-0.30" },
+    fuel_curve_a0: { label: "Fuel Curve a₀", type: "number", step: 0.001, min: 0, max: 1, tip: "Idling fuel consumption coefficient (L/hr/kW_rated)" },
+    fuel_curve_a1: { label: "Fuel Curve a₁", type: "number", step: 0.001, min: 0, max: 0.5, tip: "Marginal fuel consumption coefficient (L/kWh)" },
+    fuel_price_per_liter: { label: "Fuel Price", unit: "$/L", type: "number", step: 0.01, min: 0, max: 10, tip: "Diesel fuel price. Varies by region: $0.50-2.50/L" },
+    capital_cost_per_kw: { label: "Capital Cost", unit: "$/kW", type: "number", min: 0, max: 3000, tip: "Generator purchase cost. Typical: $300-800/kW" },
+    om_cost_per_hour: { label: "O&M Cost", unit: "$/hr", type: "number", step: 0.1, min: 0, max: 50 },
+    lifetime_hours: { label: "Lifetime", unit: "hours", type: "number", min: 1000, max: 100000, tip: "Operating hours before major overhaul. Typical: 15,000-40,000 hrs" },
+    start_cost: { label: "Start Cost", unit: "$", type: "number", min: 0, max: 100, tip: "Cost per start event (fuel + wear)" },
   },
   inverter: {
-    rated_power_kw: { label: "Rated Power", unit: "kW", type: "number" },
-    efficiency: { label: "Peak Efficiency", type: "number", step: 0.01 },
-    mode: { label: "Mode", type: "select", options: ["grid_following", "grid_forming"] },
-    bidirectional: { label: "Bidirectional", type: "boolean" },
-    reactive_power_capability_pct: { label: "Reactive Power", unit: "% of rated", type: "number" },
-    capital_cost_per_kw: { label: "Capital Cost", unit: "$/kW", type: "number" },
-    om_cost_per_kw_year: { label: "O&M Cost", unit: "$/kW/yr", type: "number" },
-    lifetime_years: { label: "Lifetime", unit: "years", type: "number" },
+    rated_power_kw: { label: "Rated Power", unit: "kW", type: "number", min: 0.1, max: 100000 },
+    efficiency: { label: "Peak Efficiency", type: "number", step: 0.01, min: 0.8, max: 1.0, tip: "Peak conversion efficiency. Typical: 0.95-0.99" },
+    mode: { label: "Mode", type: "select", options: ["grid_following", "grid_forming"], tip: "Grid-following: tracks grid. Grid-forming: creates own voltage reference" },
+    bidirectional: { label: "Bidirectional", type: "boolean", tip: "Can power flow both directions (required for battery inverters)" },
+    reactive_power_capability_pct: { label: "Reactive Power", unit: "% of rated", type: "number", min: 0, max: 100 },
+    capital_cost_per_kw: { label: "Capital Cost", unit: "$/kW", type: "number", min: 0, max: 1000 },
+    om_cost_per_kw_year: { label: "O&M Cost", unit: "$/kW/yr", type: "number", min: 0, max: 50 },
+    lifetime_years: { label: "Lifetime", unit: "years", type: "number", min: 1, max: 30, tip: "Expected lifetime. Typical: 10-15 years" },
   },
   grid_connection: {
-    max_import_kw: { label: "Max Import", unit: "kW", type: "number" },
-    max_export_kw: { label: "Max Export", unit: "kW", type: "number" },
-    sell_back_enabled: { label: "Sell-back Enabled", type: "boolean" },
-    net_metering: { label: "Net Metering", type: "boolean" },
-    buy_rate: { label: "Buy Rate", unit: "$/kWh", type: "number", step: 0.01 },
-    sell_rate: { label: "Sell Rate", unit: "$/kWh", type: "number", step: 0.01 },
-    demand_charge: { label: "Demand Charge", unit: "$/kW", type: "number", step: 0.01 },
+    max_import_kw: { label: "Max Import", unit: "kW", type: "number", min: 0, max: 100000, tip: "Maximum power draw from grid" },
+    max_export_kw: { label: "Max Export", unit: "kW", type: "number", min: 0, max: 100000, tip: "Maximum power export to grid (0 if no feed-in)" },
+    sell_back_enabled: { label: "Sell-back Enabled", type: "boolean", tip: "Whether excess energy can be sold back to the grid" },
+    net_metering: { label: "Net Metering", type: "boolean", tip: "Offsets import with export at same rate" },
+    buy_rate: { label: "Buy Rate", unit: "$/kWh", type: "number", step: 0.01, min: 0, max: 2, tip: "Cost of importing power from grid" },
+    sell_rate: { label: "Sell Rate", unit: "$/kWh", type: "number", step: 0.01, min: 0, max: 2, tip: "Revenue from exporting power to grid (usually < buy rate)" },
+    demand_charge: { label: "Demand Charge", unit: "$/kW", type: "number", step: 0.01, min: 0, max: 100, tip: "Monthly charge on peak demand ($/kW/month)" },
   },
 };
 
@@ -423,6 +434,7 @@ export default function ComponentPanel({
                 {/* Expanded: Edit Form */}
                 {isSelected && editConfig && (
                   <div className="mt-3 space-y-3 border-t border-border pt-3">
+                    <TooltipProvider delayDuration={200}>
                     {Object.entries(editConfig)
                       .filter(([k]) => k !== "type")
                       .map(([key, value]) => {
@@ -433,22 +445,51 @@ export default function ComponentPanel({
                           ? `${meta.label} (${meta.unit})`
                           : meta.label;
 
+                        const numVal = value as number;
+                        const outOfRange =
+                          meta.type === "number" &&
+                          ((meta.min !== undefined && numVal < meta.min) ||
+                           (meta.max !== undefined && numVal > meta.max));
+
                         return (
                           <div key={key} className="space-y-1">
-                            <Label className="text-xs text-muted-foreground">
-                              {fieldLabel}
-                            </Label>
+                            <div className="flex items-center gap-1">
+                              <Label className="text-xs text-muted-foreground">
+                                {fieldLabel}
+                              </Label>
+                              {meta.tip && (
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <Info className="h-3 w-3 text-muted-foreground/60 cursor-help" />
+                                  </TooltipTrigger>
+                                  <TooltipContent side="right" className="max-w-[240px] text-xs">
+                                    {meta.tip}
+                                  </TooltipContent>
+                                </Tooltip>
+                              )}
+                            </div>
 
                             {meta.type === "number" && (
-                              <Input
-                                type="number"
-                                step={meta.step || 1}
-                                value={value as number}
-                                onChange={(e) =>
-                                  handleFieldChange(key, parseFloat(e.target.value) || 0)
-                                }
-                                className="h-8 text-sm"
-                              />
+                              <>
+                                <Input
+                                  type="number"
+                                  step={meta.step || 1}
+                                  min={meta.min}
+                                  max={meta.max}
+                                  value={value as number}
+                                  onChange={(e) =>
+                                    handleFieldChange(key, parseFloat(e.target.value) || 0)
+                                  }
+                                  className={`h-8 text-sm ${outOfRange ? "border-destructive" : ""}`}
+                                />
+                                {outOfRange && (
+                                  <p className="text-[10px] text-destructive">
+                                    {meta.min !== undefined && numVal < meta.min
+                                      ? `Minimum: ${meta.min}`
+                                      : `Maximum: ${meta.max}`}
+                                  </p>
+                                )}
+                              </>
                             )}
 
                             {meta.type === "boolean" && (
@@ -485,6 +526,7 @@ export default function ComponentPanel({
                           </div>
                         );
                       })}
+                    </TooltipProvider>
 
                     <div className="flex gap-2 pt-2">
                       <Button

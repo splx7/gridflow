@@ -437,6 +437,81 @@ async def generate_load_profile(
     return profile
 
 
+@router.get("/{project_id}/weather/{dataset_id}/preview")
+async def weather_preview(
+    project_id: uuid.UUID,
+    dataset_id: uuid.UUID,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Return monthly GHI averages and temperature averages for preview charts."""
+    await _get_user_project(project_id, user, db)
+    result = await db.execute(
+        select(WeatherDataset).where(
+            WeatherDataset.id == dataset_id,
+            WeatherDataset.project_id == project_id,
+        )
+    )
+    ds = result.scalar_one_or_none()
+    if not ds:
+        raise HTTPException(status_code=404, detail="Weather dataset not found")
+
+    ghi = np.frombuffer(zlib.decompress(ds.ghi), dtype=np.float64)
+    temp = np.frombuffer(zlib.decompress(ds.temperature), dtype=np.float64)
+
+    # Monthly averages (assume 8760 hours, non-leap year)
+    month_hours = [744, 672, 744, 720, 744, 720, 744, 744, 720, 744, 720, 744]
+    month_names = ["Jan", "Feb", "Mar", "Apr", "May", "Jun",
+                   "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+    monthly_ghi = []
+    monthly_temp = []
+    offset = 0
+    for hours in month_hours:
+        monthly_ghi.append(round(float(ghi[offset:offset + hours].mean()), 1))
+        monthly_temp.append(round(float(temp[offset:offset + hours].mean()), 1))
+        offset += hours
+
+    return {
+        "months": month_names,
+        "ghi_avg": monthly_ghi,
+        "temp_avg": monthly_temp,
+        "annual_ghi_kwh_m2": round(float(ghi.sum()) / 1000, 0),
+    }
+
+
+@router.get("/{project_id}/load-profiles/{profile_id}/preview")
+async def load_profile_preview(
+    project_id: uuid.UUID,
+    profile_id: uuid.UUID,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Return 24-hour average load shape for preview charts."""
+    await _get_user_project(project_id, user, db)
+    result = await db.execute(
+        select(LoadProfile).where(
+            LoadProfile.id == profile_id,
+            LoadProfile.project_id == project_id,
+        )
+    )
+    lp = result.scalar_one_or_none()
+    if not lp:
+        raise HTTPException(status_code=404, detail="Load profile not found")
+
+    hourly = np.frombuffer(zlib.decompress(lp.hourly_kw), dtype=np.float64)
+    # Average by hour of day
+    reshaped = hourly.reshape(365, 24)
+    avg_shape = reshaped.mean(axis=0)
+
+    return {
+        "hours": list(range(24)),
+        "avg_kw": [round(float(v), 2) for v in avg_shape],
+        "peak_kw": round(float(hourly.max()), 1),
+        "min_kw": round(float(hourly.min()), 1),
+        "annual_kwh": round(float(hourly.sum()), 0),
+    }
+
+
 @router.get("/{project_id}/load-profiles", response_model=list[LoadProfileResponse])
 async def list_load_profiles(
     project_id: uuid.UUID,

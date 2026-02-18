@@ -53,6 +53,7 @@ interface ProjectState {
   setCurrentProject: (project: Project | null) => void;
   createProject: (body: ProjectCreate) => Promise<Project>;
   deleteProject: (id: string) => Promise<void>;
+  duplicateProject: (id: string) => Promise<Project>;
 
   updateProject: (
     id: string,
@@ -171,6 +172,12 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       projects: s.projects.filter((p) => p.id !== id),
       currentProject: s.currentProject?.id === id ? null : s.currentProject,
     }));
+  },
+
+  duplicateProject: async (id) => {
+    const dup = await api.duplicateProject(id);
+    set((s) => ({ projects: [dup, ...s.projects] }));
+    return dup;
   },
 
   updateProject: async (id, body) => {

@@ -1,0 +1,69 @@
+{
+  "id": "rural_microgrid_africa",
+  "name": "Rural Microgrid (Sub-Saharan Africa)",
+  "description": "Off-grid solar + battery + diesel backup for a rural village. 50 households, community loads.",
+  "category": "off-grid",
+  "preview_image": null,
+  "project": {
+    "latitude": -1.2921,
+    "longitude": 36.8219,
+    "lifetime_years": 25,
+    "discount_rate": 0.10
+  },
+  "components": [
+    {
+      "component_type": "solar_pv",
+      "name": "Village Solar Array",
+      "config": {
+        "capacity_kw": 30,
+        "tilt_deg": 15,
+        "azimuth_deg": 0,
+        "module_type": "monocrystalline",
+        "inverter_efficiency": 0.96,
+        "system_losses": 0.14,
+        "capital_cost_per_kw": 700,
+        "om_cost_per_kw_year": 15,
+        "lifetime_years": 25,
+        "derating_factor": 0.005
+      }
+    },
+    {
+      "component_type": "battery",
+      "name": "LFP Battery Bank",
+      "config": {
+        "capacity_kwh": 120,
+        "max_charge_rate_kw": 60,
+        "max_discharge_rate_kw": 60,
+        "round_trip_efficiency": 0.95,
+        "min_soc": 0.10,
+        "max_soc": 0.95,
+        "initial_soc": 0.50,
+        "chemistry": "LFP",
+        "cycle_life": 6000,
+        "capital_cost_per_kwh": 220,
+        "replacement_cost_per_kwh": 160,
+        "om_cost_per_kwh_year": 2,
+        "lifetime_years": 15
+      }
+    },
+    {
+      "component_type": "diesel_generator",
+      "name": "Backup Genset",
+      "config": {
+        "rated_power_kw": 30,
+        "min_load_ratio": 0.30,
+        "fuel_curve_a0": 0.246,
+        "fuel_curve_a1": 0.08145,
+        "fuel_price_per_liter": 1.50,
+        "capital_cost_per_kw": 450,
+        "om_cost_per_hour": 3,
+        "lifetime_hours": 30000,
+        "start_cost": 3
+      }
+    }
+  ],
+  "load": {
+    "scenario": "residential",
+    "annual_kwh": 50000
+  }
+}

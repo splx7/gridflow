@@ -8,12 +8,14 @@ import {
   getEconomics,
   getErrorMessage,
   getNetworkResults,
+  getSensitivityResults,
   getTimeseries,
   listSimulations,
 } from "@/lib/api";
 import type {
   EconomicsResult,
   NetworkResultsData,
+  SensitivityResult,
   Simulation,
   TimeseriesResult,
 } from "@/types";
@@ -22,6 +24,7 @@ import EconomicsPanel from "@/components/results/economics-panel";
 import EnergyBreakdown from "@/components/results/energy-breakdown";
 import ResultsSummary from "@/components/results/results-summary";
 import NetworkResultsPanel from "@/components/results/network-results-panel";
+import SensitivityPanel from "@/components/results/sensitivity-panel";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -39,12 +42,17 @@ import {
   Network,
   Download,
   Loader2,
+  SlidersHorizontal,
+  FileText,
 } from "lucide-react";
+import { HelpDrawer } from "@/components/ui/help-drawer";
 import {
   exportTimeseriesCSV,
   exportEconomicsCSV,
   exportNetworkCSV,
+  exportSensitivityCSV,
 } from "@/lib/export";
+import { downloadPdfReport, getErrorMessage as getErrMsg } from "@/lib/api";
 
 export default function ResultsPage() {
   const params = useParams();
@@ -56,6 +64,7 @@ export default function ResultsPage() {
   const [economics, setEconomics] = useState<EconomicsResult | null>(null);
   const [timeseries, setTimeseries] = useState<TimeseriesResult | null>(null);
   const [networkData, setNetworkData] = useState<NetworkResultsData | null>(null);
+  const [sensitivityData, setSensitivityData] = useState<SensitivityResult | null>(null);
   const [simMeta, setSimMeta] = useState<Simulation | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -73,10 +82,11 @@ export default function ResultsPage() {
     if (isAuthenticated && simId) {
       setLoading(true);
       const fetchData = async () => {
-        const [econResult, tsResult, netResult, simsResult] = await Promise.allSettled([
+        const [econResult, tsResult, netResult, sensResult, simsResult] = await Promise.allSettled([
           getEconomics(simId),
           getTimeseries(simId),
           getNetworkResults(simId),
+          getSensitivityResults(simId),
           listSimulations(projectId),
         ]);
 
@@ -90,6 +100,11 @@ export default function ResultsPage() {
           setNetworkData(netResult.value as NetworkResultsData);
         }
         // 404 is expected for single_bus — silently ignore
+
+        if (sensResult.status === "fulfilled") {
+          setSensitivityData(sensResult.value);
+        }
+        // 404 is expected when sensitivity hasn't been run yet
 
         if (simsResult.status === "fulfilled") {
           const match = simsResult.value.find((s) => s.id === simId);
@@ -140,6 +155,8 @@ export default function ResultsPage() {
             </div>
           </div>
 
+          <div className="flex items-center gap-2">
+          <HelpDrawer />
           {/* Export Dropdown */}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
@@ -149,6 +166,24 @@ export default function ResultsPage() {
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
+              <DropdownMenuItem
+                onClick={async () => {
+                  try {
+                    const blob = await downloadPdfReport(simId);
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement("a");
+                    a.href = url;
+                    a.download = `report_${simId}.pdf`;
+                    a.click();
+                    URL.revokeObjectURL(url);
+                  } catch (err) {
+                    toast.error("PDF generation failed: " + getErrMsg(err));
+                  }
+                }}
+              >
+                <FileText className="h-4 w-4 mr-2" />
+                PDF Report
+              </DropdownMenuItem>
               <DropdownMenuItem
                 onClick={() => timeseries && exportTimeseriesCSV(timeseries, simId)}
                 disabled={!timeseries}
@@ -168,8 +203,16 @@ export default function ResultsPage() {
                   Network CSV
                 </DropdownMenuItem>
               )}
+              {sensitivityData && (
+                <DropdownMenuItem
+                  onClick={() => exportSensitivityCSV(sensitivityData, simId)}
+                >
+                  Sensitivity CSV
+                </DropdownMenuItem>
+              )}
             </DropdownMenuContent>
           </DropdownMenu>
+          </div>
         </div>
       </header>
 
@@ -184,8 +227,8 @@ export default function ResultsPage() {
 
       {/* Tabs */}
       <Tabs defaultValue="timeseries" className="flex-1 flex flex-col">
-        <div className="border-b border-border bg-background/30 backdrop-blur px-4">
-          <TabsList className="bg-transparent h-auto p-0 gap-1">
+        <div className="border-b border-border bg-background/30 backdrop-blur px-4 overflow-x-auto">
+          <TabsList className="bg-transparent h-auto p-0 gap-1 w-max min-w-full">
             <TabsTrigger
               value="timeseries"
               className="data-[state=active]:bg-transparent data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:shadow-none rounded-none px-4 py-2.5 text-sm"
@@ -216,6 +259,13 @@ export default function ResultsPage() {
                 Network
               </TabsTrigger>
             )}
+            <TabsTrigger
+              value="sensitivity"
+              className="data-[state=active]:bg-transparent data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:shadow-none rounded-none px-4 py-2.5 text-sm"
+            >
+              <SlidersHorizontal className="h-4 w-4 mr-1.5" />
+              Sensitivity
+            </TabsTrigger>
           </TabsList>
         </div>
 
@@ -233,9 +283,15 @@ export default function ResultsPage() {
           </TabsContent>
           {networkData && (
             <TabsContent value="network" className="mt-0">
-              <NetworkResultsPanel data={networkData} />
+              <NetworkResultsPanel data={networkData} projectId={projectId} />
             </TabsContent>
           )}
+          <TabsContent value="sensitivity" className="mt-0">
+            <SensitivityPanel
+              simulationId={simId}
+              initialData={sensitivityData}
+            />
+          </TabsContent>
         </div>
       </Tabs>
     </div>

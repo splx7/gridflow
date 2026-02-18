@@ -15,5 +15,9 @@ COPY alembic.ini .
 RUN pip install --no-cache-dir .
 
 ENV PYTHONPATH=/app
+ENV PYTHONUNBUFFERED=1
 
 EXPOSE 8000
+
+# Run migrations then start server
+CMD ["sh", "-c", "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000"]

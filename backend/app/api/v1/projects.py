@@ -1,12 +1,15 @@
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.responses import JSONResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.core.deps import get_current_user
 from app.models.database import get_db
 from app.models.project import Project
+from app.models.component import Component
 from app.models.user import User
 from app.schemas.project import ProjectCreate, ProjectResponse, ProjectUpdate
 
@@ -89,3 +92,131 @@ async def delete_project(
 
     await db.delete(project)
     await db.commit()
+
+
+@router.post("/{project_id}/duplicate", response_model=ProjectResponse, status_code=status.HTTP_201_CREATED)
+async def duplicate_project(
+    project_id: uuid.UUID,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Deep-copy a project and its components (not simulations)."""
+    result = await db.execute(
+        select(Project).where(Project.id == project_id, Project.user_id == user.id)
+    )
+    original = result.scalar_one_or_none()
+    if not original:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
+
+    new_project = Project(
+        user_id=user.id,
+        name=f"{original.name} (copy)",
+        description=original.description,
+        latitude=original.latitude,
+        longitude=original.longitude,
+        lifetime_years=original.lifetime_years,
+        discount_rate=original.discount_rate,
+        currency=original.currency,
+    )
+    db.add(new_project)
+    await db.flush()
+
+    # Copy components
+    comp_result = await db.execute(
+        select(Component).where(Component.project_id == project_id)
+    )
+    for comp in comp_result.scalars().all():
+        new_comp = Component(
+            project_id=new_project.id,
+            component_type=comp.component_type,
+            name=comp.name,
+            config=comp.config,
+        )
+        db.add(new_comp)
+
+    await db.commit()
+    await db.refresh(new_project)
+    return new_project
+
+
+@router.get("/{project_id}/export")
+async def export_project(
+    project_id: uuid.UUID,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Export project config + components as JSON bundle."""
+    result = await db.execute(
+        select(Project).where(Project.id == project_id, Project.user_id == user.id)
+    )
+    project = result.scalar_one_or_none()
+    if not project:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
+
+    comp_result = await db.execute(
+        select(Component).where(Component.project_id == project_id)
+    )
+    components = [
+        {
+            "component_type": c.component_type,
+            "name": c.name,
+            "config": c.config,
+        }
+        for c in comp_result.scalars().all()
+    ]
+
+    bundle = {
+        "version": "1.0",
+        "project": {
+            "name": project.name,
+            "description": project.description,
+            "latitude": project.latitude,
+            "longitude": project.longitude,
+            "lifetime_years": project.lifetime_years,
+            "discount_rate": project.discount_rate,
+            "currency": project.currency,
+        },
+        "components": components,
+    }
+    return JSONResponse(content=bundle)
+
+
+@router.post("/import", response_model=ProjectResponse, status_code=status.HTTP_201_CREATED)
+async def import_project(
+    bundle: dict,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Import a project from a JSON bundle."""
+    proj_data = bundle.get("project")
+    if not proj_data or not proj_data.get("name"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid bundle: missing project data",
+        )
+
+    new_project = Project(
+        user_id=user.id,
+        name=proj_data["name"],
+        description=proj_data.get("description"),
+        latitude=proj_data.get("latitude", 0),
+        longitude=proj_data.get("longitude", 0),
+        lifetime_years=proj_data.get("lifetime_years", 25),
+        discount_rate=proj_data.get("discount_rate", 0.08),
+        currency=proj_data.get("currency", "USD"),
+    )
+    db.add(new_project)
+    await db.flush()
+
+    for comp_data in bundle.get("components", []):
+        comp = Component(
+            project_id=new_project.id,
+            component_type=comp_data["component_type"],
+            name=comp_data.get("name", comp_data["component_type"]),
+            config=comp_data.get("config", {}),
+        )
+        db.add(comp)
+
+    await db.commit()
+    await db.refresh(new_project)
+    return new_project

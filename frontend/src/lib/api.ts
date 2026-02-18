@@ -4,19 +4,27 @@ import type {
   AdvisorResponse,
   AutoGenerateRequest,
   AutoGenerateResponse,
+  BESSRecommendation,
   Branch,
   BranchCreate,
   Bus,
   BusCreate,
   CableSpec,
   Component,
+  ComponentTemplate,
+  ContingencyAnalysisResult,
   EconomicsResult,
+  GridCodeSummary,
   LoadAllocation,
   LoadAllocationCreate,
   LoadProfile,
   PowerFlowResult,
   Project,
   ProjectCreate,
+  ProjectTemplate,
+  ProjectTemplateSummary,
+  SensitivityResult,
+  SensitivityVariable,
   Simulation,
   SimulationCreate,
   SystemEvaluateRequest,
@@ -157,6 +165,28 @@ export async function deleteProject(id: string): Promise<void> {
   await api.delete(`/projects/${id}`);
 }
 
+export async function duplicateProject(id: string): Promise<Project> {
+  const { data } = await api.post(`/projects/${id}/duplicate`);
+  return data;
+}
+
+export async function exportProject(id: string): Promise<Record<string, unknown>> {
+  const { data } = await api.get(`/projects/${id}/export`);
+  return data;
+}
+
+export async function importProject(bundle: Record<string, unknown>): Promise<Project> {
+  const { data } = await api.post("/projects/import", bundle);
+  return data;
+}
+
+export async function downloadPdfReport(simulationId: string): Promise<Blob> {
+  const response = await api.get(`/simulations/${simulationId}/report/pdf`, {
+    responseType: "blob",
+  });
+  return response.data;
+}
+
 // Components
 export async function listComponents(projectId: string): Promise<Component[]> {
   const { data } = await api.get(`/projects/${projectId}/components`);
@@ -227,6 +257,22 @@ export async function listLoadProfiles(
   projectId: string
 ): Promise<LoadProfile[]> {
   const { data } = await api.get(`/projects/${projectId}/load-profiles`);
+  return data;
+}
+
+export async function getWeatherPreview(
+  projectId: string,
+  datasetId: string
+): Promise<{ months: string[]; ghi_avg: number[]; temp_avg: number[]; annual_ghi_kwh_m2: number }> {
+  const { data } = await api.get(`/projects/${projectId}/weather/${datasetId}/preview`);
+  return data;
+}
+
+export async function getLoadProfilePreview(
+  projectId: string,
+  profileId: string
+): Promise<{ hours: number[]; avg_kw: number[]; peak_kw: number; min_kw: number; annual_kwh: number }> {
+  const { data } = await api.get(`/projects/${projectId}/load-profiles/${profileId}/preview`);
   return data;
 }
 
@@ -460,6 +506,78 @@ export async function getCableLibrary(params?: {
 
 export async function getTransformerLibrary(): Promise<TransformerSpec[]> {
   const { data } = await api.get("/transformer-library");
+  return data;
+}
+
+// Sensitivity Analysis
+export async function runSensitivity(
+  simulationId: string,
+  variables: SensitivityVariable[]
+): Promise<{ task_id: string; status: string }> {
+  const { data } = await api.post(
+    `/simulations/${simulationId}/sensitivity`,
+    { variables }
+  );
+  return data;
+}
+
+export async function getSensitivityResults(
+  simulationId: string
+): Promise<SensitivityResult> {
+  const { data } = await api.get(
+    `/simulations/${simulationId}/sensitivity`
+  );
+  return data;
+}
+
+// Contingency Analysis
+export async function runContingencyAnalysis(
+  projectId: string,
+  gridCode?: string,
+  customProfile?: Record<string, unknown>
+): Promise<ContingencyAnalysisResult> {
+  const { data } = await api.post(`/projects/${projectId}/contingency-analysis`, {
+    grid_code: gridCode || "iec_default",
+    custom_profile: customProfile,
+  });
+  return data;
+}
+
+export async function listGridCodes(): Promise<GridCodeSummary[]> {
+  const { data } = await api.get("/grid-codes");
+  return data;
+}
+
+// BESS Recommendation
+export async function getBESSRecommendation(
+  projectId: string,
+  simulationId: string,
+  opts?: { max_unmet_fraction?: number; min_re_fraction?: number; max_capacity_kwh?: number }
+): Promise<BESSRecommendation> {
+  const { data } = await api.get(`/projects/${projectId}/advisor/bess-recommendation`, {
+    params: { simulation_id: simulationId, ...opts },
+  });
+  return data;
+}
+
+// Project Templates
+export async function listProjectTemplates(): Promise<ProjectTemplateSummary[]> {
+  const { data } = await api.get("/project-templates");
+  return data;
+}
+
+export async function getProjectTemplate(templateId: string): Promise<ProjectTemplate> {
+  const { data } = await api.get(`/project-templates/${templateId}`);
+  return data;
+}
+
+// Component Templates
+export async function listComponentTemplates(
+  componentType?: string
+): Promise<Record<string, ComponentTemplate[]> | ComponentTemplate[]> {
+  const { data } = await api.get("/component-templates", {
+    params: componentType ? { component_type: componentType } : undefined,
+  });
   return data;
 }
 

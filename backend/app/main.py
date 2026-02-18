@@ -2,13 +2,15 @@ from contextlib import asynccontextmanager
 from collections.abc import AsyncGenerator
 
 from fastapi import FastAPI
+from sqlalchemy import text
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
 from app.api.v1 import (
     auth, projects, components, simulations, weather, comparisons, advisor,
     buses, branches, load_allocations, power_flow, cable_library,
-    network_generate,
+    network_generate, sensitivity, reports, contingency,
+    component_templates, project_templates,
 )
 from app.models.database import get_engine
 
@@ -55,10 +57,52 @@ def create_app() -> FastAPI:
     application.include_router(
         network_generate.router, prefix="/api/v1/projects", tags=["network-generate"]
     )
+    application.include_router(
+        sensitivity.router, prefix="/api/v1", tags=["sensitivity"]
+    )
+    application.include_router(
+        reports.router, prefix="/api/v1/simulations", tags=["reports"]
+    )
+    application.include_router(
+        contingency.router, prefix="/api/v1/projects", tags=["contingency"]
+    )
+    application.include_router(
+        contingency.grid_codes_router, prefix="/api/v1", tags=["grid-codes"]
+    )
+    application.include_router(
+        component_templates.router, prefix="/api/v1", tags=["component-templates"]
+    )
+    application.include_router(
+        project_templates.router, prefix="/api/v1", tags=["project-templates"]
+    )
 
     @application.get("/health")
-    async def health_check() -> dict[str, str]:
-        return {"status": "ok"}
+    async def health_check() -> dict:
+        from app.models.database import get_session_factory
+
+        result: dict = {"status": "ok", "services": {}}
+
+        # Check database
+        try:
+            async with get_session_factory()() as session:
+                await session.execute(text("SELECT 1"))
+            result["services"]["database"] = "ok"
+        except Exception as e:
+            result["services"]["database"] = f"error: {e}"
+            result["status"] = "degraded"
+
+        # Check Redis
+        try:
+            import redis
+
+            r = redis.from_url(settings.redis_url)
+            r.ping()
+            result["services"]["redis"] = "ok"
+        except Exception as e:
+            result["services"]["redis"] = f"error: {e}"
+            result["status"] = "degraded"
+
+        return result
 
     return application
 

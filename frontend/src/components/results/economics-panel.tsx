@@ -1,5 +1,6 @@
 "use client";
 
+import { useRef } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import {
@@ -10,6 +11,8 @@ import {
   Tooltip,
 } from "recharts";
 import type { EconomicsResult } from "@/types";
+import { HelpIcon } from "@/components/ui/help-drawer";
+import { ChartExportButton } from "./chart-export-button";
 
 interface EconomicsPanelProps {
   data: EconomicsResult;
@@ -26,7 +29,16 @@ const PIE_COLORS = [
   "#6366f1",
 ];
 
+const HELP_MAP: Record<string, string> = {
+  "Net Present Cost": "economics.npc",
+  "LCOE": "economics.lcoe",
+  "IRR": "economics.irr",
+  "Payback": "economics.payback",
+  "Renewable Fraction": "economics.renewable_fraction",
+};
+
 export default function EconomicsPanel({ data }: EconomicsPanelProps) {
+  const pieChartRef = useRef<HTMLDivElement>(null);
   const metrics = [
     {
       label: "Net Present Cost",
@@ -82,9 +94,12 @@ export default function EconomicsPanel({ data }: EconomicsPanelProps) {
         {metrics.map((m) => (
           <Card key={m.label} variant="glass">
             <CardContent className="p-4">
-              <p className="text-xs text-muted-foreground uppercase tracking-wider">
-                {m.label}
-              </p>
+              <div className="flex items-center gap-1">
+                <p className="text-xs text-muted-foreground uppercase tracking-wider">
+                  {m.label}
+                </p>
+                {HELP_MAP[m.label] && <HelpIcon helpKey={HELP_MAP[m.label]} />}
+              </div>
               <p className="text-2xl font-bold mt-1">{m.value}</p>
               <p className="text-xs text-muted-foreground mt-1">
                 {m.description}
@@ -131,10 +146,11 @@ export default function EconomicsPanel({ data }: EconomicsPanelProps) {
 
         {/* Pie Chart */}
         <Card variant="glass">
-          <CardHeader>
+          <CardHeader className="flex flex-row items-center justify-between">
             <CardTitle>Cost Distribution</CardTitle>
+            <ChartExportButton chartRef={pieChartRef} filename="cost-distribution" />
           </CardHeader>
-          <CardContent>
+          <CardContent ref={pieChartRef}>
             <ResponsiveContainer width="100%" height={300}>
               <PieChart>
                 <Pie

@@ -32,3 +32,16 @@ def create_refresh_token(user_id: uuid.UUID) -> str:
 
 def decode_token(token: str) -> dict:
     return jwt.decode(token, settings.secret_key, algorithms=[settings.algorithm])
+
+
+def validate_password_strength(password: str) -> str | None:
+    """Return error message if password is too weak, or None if acceptable."""
+    if len(password) < 8:
+        return "Password must be at least 8 characters"
+    if not any(c.isupper() for c in password):
+        return "Password must contain at least one uppercase letter"
+    if not any(c.islower() for c in password):
+        return "Password must contain at least one lowercase letter"
+    if not any(c.isdigit() for c in password):
+        return "Password must contain at least one digit"
+    return None
