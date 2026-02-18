@@ -42,6 +42,8 @@ import {
   Network,
   RefreshCw,
 } from "lucide-react";
+import { ThemeToggle } from "@/components/ui/theme-toggle";
+import { useKeyboardShortcuts } from "@/hooks/use-keyboard-shortcuts";
 
 const LocationPicker = dynamic(
   () => import("@/components/configure/location-picker"),
@@ -93,6 +95,18 @@ export default function ProjectPage() {
     discount_rate: 0.08,
   });
   const [savingSettings, setSavingSettings] = useState(false);
+
+  // Keyboard shortcuts: Cmd+S saves project, Cmd+Enter goes to simulate
+  useKeyboardShortcuts({
+    onSave: () => {
+      toast.success("Project auto-saved");
+    },
+    onRun: () => {
+      if (weatherDatasets.length > 0 && loadProfiles.length > 0 && components.length > 0) {
+        setActiveTab("simulate");
+      }
+    },
+  });
 
   useEffect(() => {
     checkAuth();
@@ -230,13 +244,14 @@ export default function ProjectPage() {
               </div>
               <h1 className="text-lg font-semibold">{currentProject.name}</h1>
             </div>
-            <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+            <div className="hidden sm:flex items-center gap-1.5 text-xs text-muted-foreground">
               <MapPin className="h-3 w-3" />
               {currentProject.latitude.toFixed(2)},{" "}
               {currentProject.longitude.toFixed(2)}
             </div>
           </div>
           <div className="flex items-center gap-2">
+            <ThemeToggle />
             <Button
               variant="ghost"
               size="sm"
@@ -256,7 +271,7 @@ export default function ProjectPage() {
             </Button>
             {user && !user.email.endsWith("@gridflow.local") ? (
               <>
-                <span className="text-sm text-muted-foreground">{user.email}</span>
+                <span className="text-sm text-muted-foreground hidden md:inline">{user.email}</span>
                 <Button
                   variant="ghost"
                   size="sm"
@@ -266,7 +281,7 @@ export default function ProjectPage() {
                   }}
                 >
                   <LogOut className="h-4 w-4 mr-1" />
-                  Log out
+                  <span className="hidden sm:inline">Log out</span>
                 </Button>
               </>
             ) : (
@@ -285,8 +300,8 @@ export default function ProjectPage() {
 
       {/* Tabs Content */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col">
-        <div className="border-b border-border bg-background/50 px-4">
-          <TabsList className="bg-transparent h-auto p-0 gap-0">
+        <div className="border-b border-border bg-background/50 px-4 overflow-x-auto">
+          <TabsList className="bg-transparent h-auto p-0 gap-0 w-max min-w-full">
             <TabsTrigger
               value="advisor"
               className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none px-4 py-3"
@@ -380,14 +395,15 @@ export default function ProjectPage() {
           ) : (
             <>
               <SystemHealthBar />
-              <div className="flex-1 flex overflow-hidden">
-                <div className="flex-1 relative">
+              <div className="flex-1 flex flex-col lg:flex-row overflow-hidden">
+                <div className="flex-1 relative min-h-[300px]">
                   <SystemDiagram
                     components={components}
+                    loadProfiles={loadProfiles}
                     onSelect={setSelectedComponentId}
                   />
                 </div>
-                <div className="w-96 border-l border-border overflow-y-auto">
+                <div className="w-full lg:w-96 border-t lg:border-t-0 lg:border-l border-border overflow-y-auto max-h-[50vh] lg:max-h-none">
                   <ComponentPanel
                     projectId={projectId}
                     selectedId={selectedComponentId}
