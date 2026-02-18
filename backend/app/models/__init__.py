@@ -9,3 +9,5 @@ from app.models.simulation import Simulation, SimulationResult  # noqa: F401
 from app.models.bus import Bus  # noqa: F401
 from app.models.branch import Branch  # noqa: F401
 from app.models.load_allocation import LoadAllocation  # noqa: F401
+from app.models.annotation import Annotation  # noqa: F401
+from app.models.batch import BatchRun  # noqa: F401

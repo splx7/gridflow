@@ -38,15 +38,19 @@ import {
   ArrowLeft,
   Activity,
   DollarSign,
+  Landmark,
   BarChart3,
   Network,
   Download,
   Loader2,
   SlidersHorizontal,
   FileText,
+  Wind,
 } from "lucide-react";
 import { HelpDrawer } from "@/components/ui/help-drawer";
 import { ResultsSkeleton } from "@/components/ui/skeleton";
+import WindAssessmentPanel from "@/components/results/wind-assessment-panel";
+import FinancingPanel from "@/components/results/financing-panel";
 import {
   exportTimeseriesCSV,
   exportEconomicsCSV,
@@ -241,12 +245,28 @@ export default function ResultsPage() {
               Economics
             </TabsTrigger>
             <TabsTrigger
+              value="financing"
+              className="data-[state=active]:bg-transparent data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:shadow-none rounded-none px-4 py-2.5 text-sm"
+            >
+              <Landmark className="h-4 w-4 mr-1.5" />
+              Financing
+            </TabsTrigger>
+            <TabsTrigger
               value="breakdown"
               className="data-[state=active]:bg-transparent data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:shadow-none rounded-none px-4 py-2.5 text-sm"
             >
               <BarChart3 className="h-4 w-4 mr-1.5" />
               Energy Breakdown
             </TabsTrigger>
+            {timeseries?.wind_output && (
+              <TabsTrigger
+                value="wind"
+                className="data-[state=active]:bg-transparent data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:shadow-none rounded-none px-4 py-2.5 text-sm"
+              >
+                <Wind className="h-4 w-4 mr-1.5" />
+                Wind
+              </TabsTrigger>
+            )}
             {networkData && (
               <TabsTrigger
                 value="network"
@@ -273,11 +293,19 @@ export default function ResultsPage() {
           <TabsContent value="economics" className="mt-0">
             {economics && <EconomicsPanel data={economics} />}
           </TabsContent>
+          <TabsContent value="financing" className="mt-0">
+            <FinancingPanel simulationId={simId} />
+          </TabsContent>
           <TabsContent value="breakdown" className="mt-0">
             {timeseries && economics && (
               <EnergyBreakdown timeseries={timeseries} economics={economics} />
             )}
           </TabsContent>
+          {timeseries?.wind_output && (
+            <TabsContent value="wind" className="mt-0">
+              <WindAssessmentPanel projectId={projectId} />
+            </TabsContent>
+          )}
           {networkData && (
             <TabsContent value="network" className="mt-0">
               <NetworkResultsPanel data={networkData} projectId={projectId} />

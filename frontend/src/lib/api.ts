@@ -596,6 +596,36 @@ export async function getFREFAnalysis(
   return data;
 }
 
+// Financing Analysis
+export async function getFinancingAnalysis(
+  simulationId: string,
+  params: {
+    debt_fraction?: number;
+    interest_rate?: number;
+    loan_term?: number;
+    equity_cost?: number;
+    tax_rate?: number;
+    om_escalation?: number;
+  }
+): Promise<Record<string, unknown>> {
+  const { data } = await api.post(
+    `/simulations/${simulationId}/results/financing`,
+    params
+  );
+  return data;
+}
+
+// Wind Assessment
+export async function getWindAssessment(
+  projectId: string,
+  opts?: { hub_height?: number; rated_power_kw?: number }
+): Promise<Record<string, unknown>> {
+  const { data } = await api.get(`/projects/${projectId}/wind-assessment`, {
+    params: opts,
+  });
+  return data;
+}
+
 // Comparisons
 export async function compareSimulations(
   simulationIds: string[]
@@ -603,5 +633,72 @@ export async function compareSimulations(
   const { data } = await api.post("/comparisons/", {
     simulation_ids: simulationIds,
   });
+  return data;
+}
+
+// Annotations
+export async function listAnnotations(projectId: string): Promise<Record<string, unknown>[]> {
+  const { data } = await api.get(`/projects/${projectId}/annotations`);
+  return data;
+}
+
+export async function createAnnotation(
+  projectId: string,
+  body: { text: string; annotation_type?: string }
+): Promise<Record<string, unknown>> {
+  const { data } = await api.post(`/projects/${projectId}/annotations`, body);
+  return data;
+}
+
+export async function updateAnnotation(
+  projectId: string,
+  annotationId: string,
+  body: { text?: string; annotation_type?: string }
+): Promise<Record<string, unknown>> {
+  const { data } = await api.patch(`/projects/${projectId}/annotations/${annotationId}`, body);
+  return data;
+}
+
+export async function deleteAnnotation(projectId: string, annotationId: string): Promise<void> {
+  await api.delete(`/projects/${projectId}/annotations/${annotationId}`);
+}
+
+// Scoring
+export async function scoreSimulations(
+  simulationIds: string[],
+  weights?: Record<string, number>
+): Promise<{ scored: Record<string, unknown>[] }> {
+  const { data } = await api.post("/comparisons/score", {
+    simulation_ids: simulationIds,
+    weights: weights || null,
+  });
+  return data;
+}
+
+// Batch Simulation
+export async function createBatch(
+  projectId: string,
+  body: {
+    name: string;
+    dispatch_strategy: string;
+    weather_dataset_id: string;
+    load_profile_id: string;
+    sweep_params: { name: string; param_path: string; start: number; end: number; step: number }[];
+  }
+): Promise<Record<string, unknown>> {
+  const { data } = await api.post(`/projects/${projectId}/batch`, body);
+  return data;
+}
+
+export async function listBatches(projectId: string): Promise<Record<string, unknown>[]> {
+  const { data } = await api.get(`/projects/${projectId}/batch`);
+  return data;
+}
+
+export async function getBatchStatus(
+  projectId: string,
+  batchId: string
+): Promise<Record<string, unknown>> {
+  const { data } = await api.get(`/projects/${projectId}/batch/${batchId}`);
   return data;
 }

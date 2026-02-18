@@ -641,6 +641,51 @@ export interface ComponentTemplate {
   config: Record<string, unknown>;
 }
 
+// Annotation types
+export interface Annotation {
+  id: string;
+  project_id: string;
+  author_id: string | null;
+  text: string;
+  annotation_type: "note" | "decision" | "issue";
+  metadata_json: Record<string, unknown> | null;
+  created_at: string;
+  updated_at: string;
+}
+
+// Batch simulation types
+export interface SweepParam {
+  name: string;
+  param_path: string;
+  start: number;
+  end: number;
+  step: number;
+}
+
+export interface BatchRun {
+  id: string;
+  project_id: string;
+  name: string;
+  status: string;
+  total_runs: number;
+  completed_runs: number;
+  error_message: string | null;
+  created_at: string;
+  completed_at: string | null;
+}
+
+export interface BatchResultEntry {
+  simulation_id: string;
+  simulation_name: string;
+  status: string;
+  params: Record<string, number>;
+  npc?: number;
+  lcoe?: number;
+  irr?: number | null;
+  payback_years?: number | null;
+  renewable_fraction?: number;
+}
+
 // Network simulation results (from completed simulation)
 export interface NetworkResultsData {
   power_flow_summary: {

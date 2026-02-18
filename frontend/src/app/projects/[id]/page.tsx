@@ -44,9 +44,13 @@ import {
   Shield,
   ChevronDown,
   ChevronUp,
+  StickyNote,
 } from "lucide-react";
 import { ThemeToggle } from "@/components/ui/theme-toggle";
 import { useKeyboardShortcuts } from "@/hooks/use-keyboard-shortcuts";
+import AnnotationsPanel from "@/components/configure/annotations-panel";
+import BatchSweepPanel from "@/components/configure/batch-sweep-panel";
+import BatchResultsPanel from "@/components/results/batch-results-panel";
 
 const LocationPicker = dynamic(
   () => import("@/components/configure/location-picker"),
@@ -435,6 +439,13 @@ export default function ProjectPage() {
                 </Badge>
               )}
             </TabsTrigger>
+            <TabsTrigger
+              value="notes"
+              className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none px-4 py-3"
+            >
+              <StickyNote className="h-4 w-4 mr-2" />
+              Notes
+            </TabsTrigger>
           </TabsList>
         </div>
 
@@ -563,7 +574,17 @@ export default function ProjectPage() {
         </TabsContent>
 
         <TabsContent value="simulate" className="flex-1 overflow-y-auto p-6 mt-0">
-          <SimulationPanel projectId={projectId} onNavigate={setActiveTab} />
+          <div className="max-w-4xl mx-auto space-y-6">
+            <SimulationPanel projectId={projectId} onNavigate={setActiveTab} />
+            {weatherDatasets.length > 0 && loadProfiles.length > 0 && components.length > 0 && (
+              <BatchSweepPanel
+                projectId={projectId}
+                weatherDatasetId={weatherDatasets[0].id}
+                loadProfileId={loadProfiles[0].id}
+                onBatchCreated={() => fetchSimulations(projectId)}
+              />
+            )}
+          </div>
         </TabsContent>
 
         <TabsContent value="results" className="flex-1 overflow-y-auto p-6 mt-0">
@@ -616,6 +637,15 @@ export default function ProjectPage() {
                 ))}
               </div>
             )}
+
+            {/* Batch Results */}
+            <BatchResultsPanel projectId={projectId} />
+          </div>
+        </TabsContent>
+
+        <TabsContent value="notes" className="flex-1 overflow-y-auto p-6 mt-0">
+          <div className="max-w-3xl mx-auto">
+            <AnnotationsPanel projectId={projectId} />
           </div>
         </TabsContent>
       </Tabs>

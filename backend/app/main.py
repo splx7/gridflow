@@ -11,7 +11,8 @@ from app.api.v1 import (
     auth, projects, components, simulations, weather, comparisons, advisor,
     buses, branches, load_allocations, power_flow, cable_library,
     network_generate, sensitivity, reports, contingency,
-    component_templates, project_templates, fref,
+    component_templates, project_templates, fref, wind, financing,
+    annotations, batch,
 )
 from app.models.database import get_engine
 
@@ -83,6 +84,18 @@ def create_app() -> FastAPI:
     )
     application.include_router(
         fref.router, prefix="/api/v1", tags=["fref"]
+    )
+    application.include_router(
+        wind.router, prefix="/api/v1/projects", tags=["wind"]
+    )
+    application.include_router(
+        financing.router, prefix="/api/v1/simulations", tags=["financing"]
+    )
+    application.include_router(
+        annotations.router, prefix="/api/v1/projects", tags=["annotations"]
+    )
+    application.include_router(
+        batch.router, prefix="/api/v1/projects", tags=["batch"]
     )
 
     @application.get("/health")

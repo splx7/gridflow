@@ -5,12 +5,13 @@ import { useParams, useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { useAuthStore } from "@/stores/auth-store";
 import { useProjectStore } from "@/stores/project-store";
-import { compareSimulations, getErrorMessage } from "@/lib/api";
+import { compareSimulations, scoreSimulations, getErrorMessage } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ArrowLeft, GitCompare, Loader2, CheckCircle2, Download } from "lucide-react";
 import ComparisonChart from "@/components/results/comparison-chart";
+import ScenarioComparison from "@/components/results/scenario-comparison";
 
 interface ComparisonRow {
   simulation_id: string;
@@ -44,6 +45,10 @@ export default function ComparePage() {
 
   const [selected, setSelected] = useState<string[]>([]);
   const [comparison, setComparison] = useState<ComparisonRow[] | null>(null);
+  const [scored, setScored] = useState<Record<string, unknown>[] | null>(null);
+  const [weights, setWeights] = useState<Record<string, number>>({
+    npc: 5, lcoe: 5, irr: 5, payback_years: 5, renewable_fraction: 5, co2_emissions_kg: 5,
+  });
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
@@ -74,8 +79,12 @@ export default function ComparePage() {
     if (selected.length < 2) return;
     setLoading(true);
     try {
-      const data = await compareSimulations(selected);
-      setComparison(data.comparisons as unknown as ComparisonRow[]);
+      const [compData, scoreData] = await Promise.all([
+        compareSimulations(selected),
+        scoreSimulations(selected, weights),
+      ]);
+      setComparison(compData.comparisons as unknown as ComparisonRow[]);
+      setScored(scoreData.scored);
     } catch (err) {
       toast.error(getErrorMessage(err));
     } finally {
@@ -349,6 +358,24 @@ export default function ComparePage() {
 
         {/* Charts */}
         {comparison && <ComparisonChart data={comparison} />}
+
+        {/* Scoring & Decision Matrix */}
+        {scored && scored.length >= 2 && (
+          <ScenarioComparison
+            scored={scored as unknown as { simulation_id: string; simulation_name: string; score: number; rank: number; normalized: Record<string, number>; raw: Record<string, number | null> }[]}
+            weights={weights}
+            onWeightChange={async (metric, value) => {
+              const newWeights = { ...weights, [metric]: value };
+              setWeights(newWeights);
+              if (selected.length >= 2) {
+                try {
+                  const scoreData = await scoreSimulations(selected, newWeights);
+                  setScored(scoreData.scored);
+                } catch { /* ignore */ }
+              }
+            }}
+          />
+        )}
       </div>
     </div>
   );

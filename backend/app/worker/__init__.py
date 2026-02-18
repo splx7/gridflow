@@ -15,7 +15,7 @@ celery_app.conf.update(
     timezone="UTC",
     task_track_started=True,
     result_expires=86400,
-    include=["app.worker.tasks", "app.worker.sensitivity_task"],
+    include=["app.worker.tasks", "app.worker.sensitivity_task", "app.worker.batch_task"],
 )
 
 celery_app.autodiscover_tasks(["app.worker"])

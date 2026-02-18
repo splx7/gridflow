@@ -32,8 +32,12 @@ class Simulation(Base):
         DateTime(timezone=True), server_default=func.now()
     )
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    batch_run_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("batch_runs.id", ondelete="SET NULL"), nullable=True
+    )
 
     project: Mapped["Project"] = relationship(back_populates="simulations")  # noqa: F821
+    batch_run: Mapped["BatchRun | None"] = relationship(back_populates="simulations")  # noqa: F821
     results: Mapped["SimulationResult | None"] = relationship(  # noqa: F821
         back_populates="simulation", uselist=False, cascade="all, delete"
     )
