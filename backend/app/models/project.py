@@ -56,3 +56,6 @@ class Project(Base):
     load_allocations: Mapped[list["LoadAllocation"]] = relationship(  # noqa: F821
         back_populates="project", cascade="all, delete"
     )
+    annotations: Mapped[list["Annotation"]] = relationship(  # noqa: F821
+        back_populates="project", cascade="all, delete"
+    )
