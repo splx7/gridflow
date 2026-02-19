@@ -1,4 +1,4 @@
-"""Tests for engine.network — power flow solver and grid codes."""
+"""Tests for engine.network — power flow solver, grid codes, and topology."""
 
 from __future__ import annotations
 
@@ -22,6 +22,11 @@ from engine.network.grid_codes import (
     list_profiles,
     build_custom_profile,
 )
+from engine.network.topology_generator import (
+    generate_radial_topology,
+    DEFAULT_POWER_FACTORS,
+)
+from engine.network.network_runner import _resolve_bus_indices
 
 
 # ======================================================================
@@ -223,3 +228,146 @@ class TestGridCodes:
         assert d["name"] == "Fiji Grid Code"
         assert "voltage_limits" in d
         assert "frequency_limits" in d
+
+
+# ======================================================================
+# Topology generator — load buses
+# ======================================================================
+
+def _base_components():
+    """Minimal component set for topology tests."""
+    return [
+        {
+            "id": "pv-1",
+            "component_type": "solar_pv",
+            "name": "PV Array 1",
+            "config": {"capacity_kw": 10},
+        },
+    ]
+
+
+class TestTopologyLoadBuses:
+    """Tests for per-profile load bus generation in topology_generator."""
+
+    def test_topology_multiple_loads(self):
+        """Two load profiles produce two load buses with correct fractions."""
+        profiles = [
+            {"id": "lp-1", "name": "Village", "profile_type": "rural_village", "annual_kwh": 6000},
+            {"id": "lp-2", "name": "Water Pump", "profile_type": "water_pump", "annual_kwh": 4000},
+        ]
+        topo = generate_radial_topology(_base_components(), profiles)
+
+        # Should have load buses (name starts with "Load:")
+        load_buses = [b for b in topo["buses"] if b["name"].startswith("Load:")]
+        assert len(load_buses) == 2
+
+        # Load allocations should reference load bus indices (not main AC bus)
+        allocs = topo["load_allocations"]
+        assert len(allocs) == 2
+
+        # Fractions should sum to 1.0
+        total_fraction = sum(a["fraction"] for a in allocs)
+        assert abs(total_fraction - 1.0) < 0.01
+
+        # Fractions proportional to annual_kwh
+        village_alloc = next(a for a in allocs if a["load_profile_id"] == "lp-1")
+        pump_alloc = next(a for a in allocs if a["load_profile_id"] == "lp-2")
+        assert abs(village_alloc["fraction"] - 0.6) < 0.01  # 6000/10000
+        assert abs(pump_alloc["fraction"] - 0.4) < 0.01    # 4000/10000
+
+        # Power factors differ by type
+        assert village_alloc["power_factor"] == 0.88  # rural_village
+        assert pump_alloc["power_factor"] == 0.75     # water_pump
+
+    def test_topology_single_load(self):
+        """Single load profile still gets a dedicated load bus."""
+        profiles = [
+            {"id": "lp-1", "name": "Residential", "profile_type": "residential", "annual_kwh": 8000},
+        ]
+        topo = generate_radial_topology(_base_components(), profiles)
+
+        load_buses = [b for b in topo["buses"] if b["name"].startswith("Load:")]
+        assert len(load_buses) == 1
+
+        allocs = topo["load_allocations"]
+        assert len(allocs) == 1
+        assert allocs[0]["fraction"] == 1.0
+        assert allocs[0]["power_factor"] == 0.90  # residential
+
+        # Load bus should have is_load_bus config
+        assert load_buses[0]["config"].get("is_load_bus") is True
+
+    def test_topology_no_loads(self):
+        """No load profiles → no load buses or allocations."""
+        topo = generate_radial_topology(_base_components(), [])
+
+        load_buses = [b for b in topo["buses"] if b["name"].startswith("Load:")]
+        assert len(load_buses) == 0
+        assert len(topo["load_allocations"]) == 0
+
+    def test_load_power_factor_lookup(self):
+        """Verify power factor lookup for each known load type."""
+        assert DEFAULT_POWER_FACTORS["residential"] == 0.90
+        assert DEFAULT_POWER_FACTORS["commercial"] == 0.85
+        assert DEFAULT_POWER_FACTORS["industrial"] == 0.80
+        assert DEFAULT_POWER_FACTORS["rural_village"] == 0.88
+        assert DEFAULT_POWER_FACTORS["water_pump"] == 0.75
+        assert DEFAULT_POWER_FACTORS["motor"] == 0.80
+
+    def test_load_bus_has_cable_branch(self):
+        """Each load bus should have a cable branch from main AC bus."""
+        profiles = [
+            {"id": "lp-1", "name": "Village", "profile_type": "rural_village", "annual_kwh": 5000},
+        ]
+        topo = generate_radial_topology(_base_components(), profiles)
+
+        load_bus_idx = next(
+            i for i, b in enumerate(topo["buses"]) if b["name"].startswith("Load:")
+        )
+        # Find cable branch to load bus
+        feeder = [
+            br for br in topo["branches"]
+            if br["to_bus_idx"] == load_bus_idx and br["branch_type"] == "cable"
+        ]
+        assert len(feeder) == 1
+        assert "Feeder" in feeder[0]["name"]
+
+
+# ======================================================================
+# Multi-component bus map resolution
+# ======================================================================
+
+class TestMultiComponentBusMap:
+    """Tests for _resolve_bus_indices and multi-component generation."""
+
+    def test_resolve_list(self):
+        """List value returns as-is."""
+        bus_map = {"solar_pv": [1, 3]}
+        assert _resolve_bus_indices(bus_map, "solar_pv") == [1, 3]
+
+    def test_resolve_int_legacy(self):
+        """Single int value wraps in list (backward compat)."""
+        bus_map = {"solar_pv": 2}
+        assert _resolve_bus_indices(bus_map, "solar_pv") == [2]
+
+    def test_resolve_missing(self):
+        """Missing key returns empty list."""
+        bus_map = {"solar_pv": [1]}
+        assert _resolve_bus_indices(bus_map, "wind_turbine") == []
+
+    def test_two_pv_arrays_get_separate_buses(self):
+        """Two PV arrays should get separate DC buses in topology."""
+        comps = [
+            {"id": "pv-1", "component_type": "solar_pv", "name": "PV Array 1",
+             "config": {"capacity_kw": 10}},
+            {"id": "pv-2", "component_type": "solar_pv", "name": "PV Array 2",
+             "config": {"capacity_kw": 15}},
+        ]
+        profiles = [{"id": "lp-1", "name": "Load", "profile_type": "commercial", "annual_kwh": 5000}]
+        topo = generate_radial_topology(comps, profiles)
+
+        # Each PV should be assigned to its own DC bus
+        pv_assignments = [a for a in topo["component_assignments"] if a["component_id"] in ("pv-1", "pv-2")]
+        assert len(pv_assignments) == 2
+        bus_indices = [a["bus_idx"] for a in pv_assignments]
+        assert bus_indices[0] != bus_indices[1], "Two PV arrays must have different bus indices"

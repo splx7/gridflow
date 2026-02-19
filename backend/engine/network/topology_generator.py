@@ -92,6 +92,15 @@ def _current_from_power(p_kw: float, v_kv: float, pf: float = 0.85) -> float:
 
 LARGE_COMPONENT_THRESHOLD_KW = 100
 
+# IEEE 399 Table 3-13: Typical power factors by load type
+DEFAULT_POWER_FACTORS: dict[str, float] = {
+    "residential": 0.90,
+    "commercial": 0.85,
+    "industrial": 0.80,
+    "rural_village": 0.88,
+    "water_pump": 0.75,
+    "motor": 0.80,
+}
 
 DC_SOURCE_TYPES = {"solar_pv", "battery"}
 AC_SOURCE_TYPES = {"diesel_generator", "wind_turbine"}
@@ -462,16 +471,76 @@ def generate_radial_topology(
         })
 
     # -----------------------------------------------------------------------
-    # 5. Load allocations
+    # 5. Load allocations — dedicated PQ load bus per profile (IEEE 399)
     # -----------------------------------------------------------------------
     if load_profiles:
-        load_allocations.append({
-            "bus_idx": main_ac_idx,
-            "load_profile_id": load_profiles[0]["id"],
-            "name": "Load @ Main AC Bus",
-            "fraction": 1.0,
-            "power_factor": 0.85,
-        })
+        total_annual_kwh = sum(
+            lp.get("annual_kwh", 0) for lp in load_profiles
+        )
+        load_bus_x = 100
+        for lp_idx, lp in enumerate(load_profiles):
+            # Fraction proportional to energy share
+            annual = lp.get("annual_kwh", 0)
+            if total_annual_kwh > 0 and len(load_profiles) > 1:
+                fraction = annual / total_annual_kwh
+            else:
+                fraction = 1.0 / len(load_profiles) if len(load_profiles) > 1 else 1.0
+
+            # Power factor from profile type
+            profile_type = lp.get("profile_type", "commercial")
+            pf = DEFAULT_POWER_FACTORS.get(profile_type, 0.85)
+
+            # Create dedicated PQ load bus below Main AC Bus
+            load_bus = {
+                "name": f"Load: {lp['name']}",
+                "bus_type": "pq",
+                "nominal_voltage_kv": lv_voltage_kv,
+                "x_position": load_bus_x,
+                "y_position": (main_ac_idx + 1) * 200 + 150,
+                "config": {"is_load_bus": True},
+            }
+            load_bus_idx = len(buses)
+            buses.append(load_bus)
+            load_bus_x += 250
+
+            # LV cable from Main AC Bus to load bus
+            peak_kw = annual * 3.0 / 8760 if annual > 0 else 10.0
+            cable_i = _current_from_power(peak_kw, lv_voltage_kv, pf)
+            cable = _select_cable(cable_i * 1.25, "lv", cable_material)
+            if cable:
+                branches.append({
+                    "name": f"Feeder to {lp['name']} ({cable.name})",
+                    "branch_type": "cable",
+                    "from_bus_idx": main_ac_idx,
+                    "to_bus_idx": load_bus_idx,
+                    "config": {
+                        "r_ohm_per_km": cable.r_ohm_per_km,
+                        "x_ohm_per_km": cable.x_ohm_per_km,
+                        "length_km": default_cable_length_km,
+                        "ampacity_a": cable.ampacity_a,
+                    },
+                })
+            else:
+                branches.append({
+                    "name": f"Feeder to {lp['name']}",
+                    "branch_type": "cable",
+                    "from_bus_idx": main_ac_idx,
+                    "to_bus_idx": load_bus_idx,
+                    "config": {
+                        "r_ohm_per_km": 0.1,
+                        "x_ohm_per_km": 0.07,
+                        "length_km": default_cable_length_km,
+                        "ampacity_a": max(cable_i * 1.5, 50),
+                    },
+                })
+
+            load_allocations.append({
+                "bus_idx": load_bus_idx,
+                "load_profile_id": lp["id"],
+                "name": f"Load @ {lp['name']}",
+                "fraction": round(fraction, 4),
+                "power_factor": pf,
+            })
 
     # -----------------------------------------------------------------------
     # 6. Summary recommendations

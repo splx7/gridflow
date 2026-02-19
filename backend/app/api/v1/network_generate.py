@@ -88,7 +88,12 @@ async def auto_generate_network(
         select(LoadProfile).where(LoadProfile.project_id == project_id)
     )
     load_profiles_data = [
-        {"id": str(lp.id), "name": lp.name}
+        {
+            "id": str(lp.id),
+            "name": lp.name,
+            "profile_type": lp.profile_type,
+            "annual_kwh": lp.annual_kwh,
+        }
         for lp in lp_result.scalars().all()
     ]
 

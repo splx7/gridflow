@@ -18,6 +18,7 @@ import {
 import "@xyflow/react/dist/style.css";
 import { useProjectStore } from "@/stores/project-store";
 import BusNodeComponent from "./bus-node";
+import LoadNodeComponent from "./load-node";
 import CableEdgeComponent from "./cable-edge";
 import TransformerEdgeComponent from "./transformer-edge";
 import InverterEdgeComponent from "./inverter-edge";
@@ -29,6 +30,7 @@ import type { Bus, Branch, Component as GridComponent } from "@/types";
 
 const nodeTypes: NodeTypes = {
   bus: BusNodeComponent as unknown as NodeTypes["bus"],
+  load: LoadNodeComponent as unknown as NodeTypes["load"],
 };
 
 const edgeTypes: EdgeTypes = {
@@ -83,10 +85,13 @@ export default function NetworkDiagram({
   const {
     buses,
     branches,
+    loadAllocations,
+    loadProfiles,
     powerFlowResult,
     networkRecommendations,
     fetchBuses,
     fetchBranches,
+    fetchLoadAllocations,
     updateBus,
     runPowerFlow,
   } = useProjectStore();
@@ -106,7 +111,8 @@ export default function NetworkDiagram({
   useEffect(() => {
     fetchBuses(projectId);
     fetchBranches(projectId);
-  }, [projectId, fetchBuses, fetchBranches]);
+    fetchLoadAllocations(projectId);
+  }, [projectId, fetchBuses, fetchBranches, fetchLoadAllocations]);
 
   // Auto power-flow on structure changes (debounced)
   const prevStructureRef = useRef<string>("");
@@ -239,13 +245,46 @@ export default function NetworkDiagram({
     });
   }, [branches, powerFlowResult, selectedBranchId]);
 
+  // Build load nodes from load allocations
+  const loadNodes: Node[] = useMemo(() => {
+    return loadAllocations.map((alloc, i) => {
+      const busPos = positions.get(alloc.bus_id);
+      const lp = loadProfiles.find((p) => p.id === alloc.load_profile_id);
+      // Position below the parent bus, or use a default
+      const pos = busPos
+        ? { x: busPos.x, y: busPos.y + 160 }
+        : { x: 100 + i * 250, y: 500 };
+      return {
+        id: `load-${alloc.id}`,
+        type: "load" as const,
+        position: pos,
+        data: {
+          label: alloc.name || lp?.name || "Load",
+          annualKwh: lp?.annual_kwh,
+          powerFactor: alloc.power_factor,
+          fractionPct: alloc.fraction * 100,
+        },
+      };
+    });
+  }, [loadAllocations, loadProfiles, positions]);
+
+  // Load allocation edges (dashed pink, bus → load node)
+  const loadEdges: Edge[] = useMemo(() => {
+    return loadAllocations.map((alloc) => ({
+      id: `load-edge-${alloc.id}`,
+      source: alloc.bus_id,
+      target: `load-${alloc.id}`,
+      style: { stroke: "#ec4899", strokeWidth: 1.5, strokeDasharray: "6 3" },
+    }));
+  }, [loadAllocations]);
+
   const allNodes = useMemo(
-    () => [...busNodes, ...componentNodes],
-    [busNodes, componentNodes]
+    () => [...busNodes, ...componentNodes, ...loadNodes],
+    [busNodes, componentNodes, loadNodes]
   );
   const allEdges = useMemo(
-    () => [...branchEdges, ...componentEdges],
-    [branchEdges, componentEdges]
+    () => [...branchEdges, ...componentEdges, ...loadEdges],
+    [branchEdges, componentEdges, loadEdges]
   );
 
   const [nodes, setNodes] = useState<Node[]>(allNodes);
@@ -270,7 +309,7 @@ export default function NetworkDiagram({
 
   const onNodeClick = useCallback(
     (_: unknown, node: Node) => {
-      if (node.id.startsWith("comp-")) return;
+      if (node.id.startsWith("comp-") || node.id.startsWith("load-")) return;
       setSelectedBusId(node.id);
       setSelectedBranchId(null);
     },
@@ -279,7 +318,7 @@ export default function NetworkDiagram({
 
   const onEdgeClick = useCallback(
     (_: unknown, edge: Edge) => {
-      if (edge.id.startsWith("comp-edge-")) return;
+      if (edge.id.startsWith("comp-edge-") || edge.id.startsWith("load-edge-")) return;
       setSelectedBranchId(edge.id);
       setSelectedBusId(null);
     },
@@ -294,7 +333,7 @@ export default function NetworkDiagram({
   // Save bus positions on drag end
   const onNodeDragStop = useCallback(
     (_: unknown, node: Node) => {
-      if (!node.id.startsWith("comp-")) {
+      if (!node.id.startsWith("comp-") && !node.id.startsWith("load-")) {
         updateBus(projectId, node.id, {
           x_position: node.position.x,
           y_position: node.position.y,
@@ -332,7 +371,7 @@ export default function NetworkDiagram({
             <Controls className="!bg-card !border-border !text-foreground [&>button]:!bg-card [&>button]:!border-border [&>button]:!text-foreground" />
             <MiniMap
               className="!bg-card !border-border"
-              nodeColor={() => "#3b82f6"}
+              nodeColor={(node) => node.id.startsWith("load-") ? "#ec4899" : "#3b82f6"}
               maskColor="hsla(222.2, 84%, 4.9%, 0.7)"
             />
           </ReactFlow>

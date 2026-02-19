@@ -184,11 +184,13 @@ def run_simulation(self, simulation_id: str) -> dict:
                             and br.to_bus_id in bus_uuid_to_idx
                         ]
 
-                        # Component → bus mapping
-                        comp_bus_map = {}
+                        # Component → bus mapping (list per type for multi-component)
+                        comp_bus_map: dict[str, list[int]] = {}
                         for comp in components:
                             if comp.bus_id and comp.bus_id in bus_uuid_to_idx:
-                                comp_bus_map[comp.component_type] = bus_uuid_to_idx[comp.bus_id]
+                                comp_bus_map.setdefault(comp.component_type, []).append(
+                                    bus_uuid_to_idx[comp.bus_id]
+                                )
 
                         # Load allocations
                         load_allocs = []

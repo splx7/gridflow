@@ -20,7 +20,7 @@ def run_network_simulation(
     dispatch_results: dict[str, Any],
     buses_config: list[dict],
     branches_config: list[dict],
-    component_bus_map: dict[str, int],
+    component_bus_map: dict[str, int | list[int]],
     load_allocations: list[dict],
     load_kw: np.ndarray,
     mode: str = "snapshot",
@@ -33,7 +33,7 @@ def run_network_simulation(
         dispatch_results: output from SimulationRunner.run()
         buses_config: bus definitions for build_network_from_config
         branches_config: branch definitions
-        component_bus_map: component_type → bus_index mapping
+        component_bus_map: component_type → bus_index or list of bus_indices
         load_allocations: list of {bus_idx, fraction, power_factor}
         load_kw: 8760 hourly load array
         mode: "snapshot" or "hourly"
@@ -226,10 +226,22 @@ def _select_critical_hours(
     return sorted(hours)
 
 
+def _resolve_bus_indices(
+    component_bus_map: dict[str, int | list[int]], key: str
+) -> list[int]:
+    """Get list of bus indices for a component type (supports legacy int or list)."""
+    val = component_bus_map.get(key)
+    if val is None:
+        return []
+    if isinstance(val, list):
+        return val
+    return [val]
+
+
 def _apply_generation(
     network: NetworkModel,
     hour: int,
-    component_bus_map: dict[str, int],
+    component_bus_map: dict[str, int | list[int]],
     pv_kw: np.ndarray,
     wind_kw: np.ndarray,
     gen_kw: np.ndarray,
@@ -239,26 +251,32 @@ def _apply_generation(
     """Apply generation values from dispatch to network buses."""
     n = len(pv_kw)
 
-    # PV generation
-    if "solar_pv" in component_bus_map and hour < n:
-        idx = component_bus_map["solar_pv"]
-        p = float(pv_kw[hour]) if pv_kw[hour] > 0 else 0.0
-        s_pu = power_to_pu(p, 0, s_base_mva)
-        network.buses[idx].p_gen_pu += s_pu.real
+    # PV generation — split equally across all PV buses
+    indices = _resolve_bus_indices(component_bus_map, "solar_pv")
+    if indices and hour < n:
+        p_total = float(pv_kw[hour]) if pv_kw[hour] > 0 else 0.0
+        p_each = p_total / len(indices) if p_total > 0 else 0.0
+        for idx in indices:
+            s_pu = power_to_pu(p_each, 0, s_base_mva)
+            network.buses[idx].p_gen_pu += s_pu.real
 
     # Wind generation
-    if "wind_turbine" in component_bus_map and hour < n:
-        idx = component_bus_map["wind_turbine"]
-        p = float(wind_kw[hour]) if wind_kw[hour] > 0 else 0.0
-        s_pu = power_to_pu(p, 0, s_base_mva)
-        network.buses[idx].p_gen_pu += s_pu.real
+    indices = _resolve_bus_indices(component_bus_map, "wind_turbine")
+    if indices and hour < n:
+        p_total = float(wind_kw[hour]) if wind_kw[hour] > 0 else 0.0
+        p_each = p_total / len(indices) if p_total > 0 else 0.0
+        for idx in indices:
+            s_pu = power_to_pu(p_each, 0, s_base_mva)
+            network.buses[idx].p_gen_pu += s_pu.real
 
     # Diesel generator
-    if "diesel_generator" in component_bus_map and hour < n:
-        idx = component_bus_map["diesel_generator"]
-        p = float(gen_kw[hour]) if gen_kw[hour] > 0 else 0.0
-        s_pu = power_to_pu(p, 0, s_base_mva)
-        network.buses[idx].p_gen_pu += s_pu.real
+    indices = _resolve_bus_indices(component_bus_map, "diesel_generator")
+    if indices and hour < n:
+        p_total = float(gen_kw[hour]) if gen_kw[hour] > 0 else 0.0
+        p_each = p_total / len(indices) if p_total > 0 else 0.0
+        for idx in indices:
+            s_pu = power_to_pu(p_each, 0, s_base_mva)
+            network.buses[idx].p_gen_pu += s_pu.real
 
 
 def _apply_loads(
